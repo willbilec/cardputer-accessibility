@@ -1,0 +1,9 @@
+.pio/
+generated/
+dist/
+__pycache__/
+offline-reader-test-package.zip
+test-results/
+.tools/
+dist-headless/
+headless-klatt-test-package.zip

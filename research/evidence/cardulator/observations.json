@@ -1,0 +1,24 @@
+{
+  "date": "2026-11-04",
+  "image_sha256": "29e230bcef06f02fb675ef23beba4c2d4f0fd15eb9d695cd41b3a794542102df",
+  "environment": "Velxio ESP32-S3/Cardputer ADV browser emulator, no physical device",
+  "app_bytes": 2670000,
+  "static_linker_ram_bytes": 117380,
+  "boot": {"polling_keyboard": true, "speech_ready": true, "speech_init_free_heap": 143532, "speech_init_largest_block": 98292},
+  "later_stats": {"simulated_ms": 60000, "frames": 1977, "output_underruns": 0, "free_heap": 125360, "minimum_free_heap": 110884},
+  "final_image_checks": [
+    "serial compact-backend furlong to metres: 201.168",
+    "serial mile to degree: spoken incompatible-unit error, no reset",
+    "real Enter clears original error state; subsequent serial 2+3*4: 14",
+    "actual keyboard tools menu, settings, brightness 128 to 143 to 128",
+    "actual keyboard constants and binding selection",
+    "help speech, explicit Stop log and subsequent STATE response"
+  ],
+  "earlier_adaptation_checks": ["actual keys 2+2: 4", "variable field and back", "fib script and output-line traversal", "hypot wizard 3,4: 5 with next-parameter announcement", "plot sample numeric traversal"],
+  "host": {"upstream_total": 31, "upstream_pass": 30, "upstream_fail": 1, "failure": "full-catalogue error wording expects Incompatible, receives Reduce error: mile", "adapter_sanitizers": "pass", "compact_catalogue": "pass", "overall_runner_exit": 1},
+  "fixed": ["watchdog task-not-subscribed log flood", "full-unit-catalogue allocation reset by using explicit compact profile", "formula-result announcement hiding next parameter", "empty result announcement after clearing original error state"],
+  "user_listening": {"after_deferred_startup": "Crackly for 10–20 seconds, then smoothed out", "final_short_announcement": "not independently accepted"},
+  "remaining": ["startup audible crackle", "independent Edge operation of this utility", "arbitrary long-script responsiveness", "all physical-device tests", "full GNU Units catalogue unsupported in speech profile"],
+  "physical_device_connected": false,
+  "sd_catalogue_replaced": false
+}

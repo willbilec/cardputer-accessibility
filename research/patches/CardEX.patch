@@ -1,0 +1,567 @@
+diff --git a/.gitignore b/.gitignore
+index 73182a0..2e179ba 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -38,3 +38,5 @@ secrets.h
+ compile_commands.json
+ .clangd/
+ .cache/
++.pio-access/
++build-access.log
+diff --git a/src/Feedback.cpp b/src/Feedback.cpp
+index 0a82143..77506d3 100644
+--- a/src/Feedback.cpp
++++ b/src/Feedback.cpp
+@@ -9,6 +9,9 @@ namespace {
+ // Deliberately short. Anything longer than a click is irritating on a device
+ // you type on.
+ void tone(int frequency, int durationMs) {
++#ifdef CARDEX_SPEECH
++  return; // The speech output owns I2S; do not start a competing speaker driver.
++#endif
+   if (!SOUND_ENABLED) {
+     return;
+   }
+@@ -19,6 +22,9 @@ void tone(int frequency, int durationMs) {
+ } // namespace
+ 
+ void Feedback::begin() {
++#ifdef CARDEX_SPEECH
++  return;
++#endif
+   M5Cardputer.Speaker.begin();
+   M5Cardputer.Speaker.setVolume((uint8_t)SOUND_VOLUME);
+ }
+diff --git a/src/FileManager.cpp b/src/FileManager.cpp
+index c76dda6..28e96bf 100644
+--- a/src/FileManager.cpp
++++ b/src/FileManager.cpp
+@@ -1,4 +1,5 @@
+ #include "FileManager.h"
++#include "Reader.h"
+ #include "Bookmarks.h"
+ #include "Feedback.h"
+ #include "StatusLed.h"
+@@ -17,6 +18,9 @@ FileManager::FileManager() {
+   useSD = true;
+   sdAvailable = false;
+   currentPath = "/";
++#ifdef CARDEX_EMULATOR_DEMO
++  currentPath = "/reader-demo";
++#endif
+   selectedIndex = 0;
+   scrollOffset = 0;
+   inEditor = false;
+@@ -112,6 +116,23 @@ void FileManager::update() {
+   } else {
+     StatusLed::setState(LED_STATE_IDLE);
+   }
++  if(renderRequested)announceFocus();
++}
++
++void FileManager::announceFocus() {
++  if(inEditor){editor.announceFocus();return;}
++  String text="Folder "+currentPath+". ";
++  String id=currentPath+":"+String(selectedIndex)+":"+String(files.size())+":"+String(selectionCount());
++  if(searchMode){text="Search results for "+searchQuery+". ";id+="/search/"+searchQuery;}
++  if(files.empty())text+="Empty. Control N creates a file or folder.";
++  else if(selectedIndex>=0&&selectedIndex<(int)files.size()){
++    const auto&entry=files[selectedIndex];id+="/"+entry.fullPath+String(entry.bookmarked);
++    text+=entry.name+(entry.isDirectory?". Folder. ":". File. "+entry.getSizeStr()+". ");
++    if(entry.selected)text+="Selected. ";if(entry.bookmarked)text+="Bookmarked. ";
++    text+=String(selectedIndex+1)+" of "+String(files.size())+". ";
++    if(selectionCount())text+=String(selectionCount())+" items selected.";
++  }
++  Reader::focus(id,text);
+ }
+ 
+ // ==================== UPDATE FREE SPACE ====================
+@@ -872,6 +893,10 @@ void FileManager::handleKeyboard() {
+ 
+ // ==================== ENTER MASS STORAGE ====================
+ void FileManager::enterMassStorage() {
++#ifdef CARDEX_EMULATOR_DEMO
++  Reader::event("USB mass storage is unavailable in this simulator build.");
++  return;
++#endif
+   // While the host owns the card it writes raw sectors underneath our
+   // filesystem. Anything we have open would be working from a stale view, and
+   // unsaved edits would be lost by the remount below.
+diff --git a/src/FileManager.h b/src/FileManager.h
+index e99b645..dd3c4d0 100644
+--- a/src/FileManager.h
++++ b/src/FileManager.h
+@@ -25,6 +25,7 @@ public:
+   // Main loop
+   void update();
+   void render();
++  void announceFocus();
+ 
+   // True when something changed since the last frame. The loop used to repaint
+   // and push the whole 64KB sprite every 10ms regardless.
+diff --git a/src/Input.cpp b/src/Input.cpp
+index b8108d8..8d11d0a 100644
+--- a/src/Input.cpp
++++ b/src/Input.cpp
+@@ -1,4 +1,5 @@
+ #include "Input.h"
++#include "Reader.h"
+ 
+ #include "Config.h"
+ 
+@@ -104,6 +105,12 @@ void Input::sample(bool (&pressed)[KB_KEY_COUNT]) {
+ }
+ 
+ void Input::update() {
++#ifdef CARDEX_EMULATOR_DEMO
++  // begin(cfg,false) intentionally skipped the interrupt reader. Explicitly
++  // service the injected polling reader in every main and modal input loop.
++  M5Cardputer.Keyboard.updateKeyList();
++  M5Cardputer.Keyboard.updateKeysState();
++#endif
+   _events.clear();
+ 
+   bool pressed[KB_KEY_COUNT];
+@@ -187,8 +194,17 @@ void Input::update() {
+     event.opt = _opt;
+     event.caps = caps;
+     event.repeat = isRepeat;
++#ifdef CARDEX_SPEECH
++    if(event.ctrl&&event.code==' '){if(!isRepeat){if(event.shift)Reader::next();else Reader::repeat();}continue;}
++    if(event.ctrl&&event.code==KEY_BACKSPACE){if(!isRepeat)Reader::stop();continue;}
++    // A desktop keyboard has no Cardputer Fn key. Ctrl is an additional Fn
++    // command modifier in this accessible build; the physical Fn still works.
++    event.fn = event.fn || event.ctrl;
++    if(!event.repeat)Serial.printf("CARDEX_KEY code=%u fn=%d ctrl=%d\n",event.code,event.fn,event.ctrl);
++#endif
+     _events.push_back(event);
+   }
++  Reader::poll();
+ }
+ 
+ bool Input::anyKeyDown() {
+diff --git a/src/MassStorage.cpp b/src/MassStorage.cpp
+index 4074c1d..635bd3a 100644
+--- a/src/MassStorage.cpp
++++ b/src/MassStorage.cpp
+@@ -1,4 +1,5 @@
+ #include "MassStorage.h"
++#ifndef CARDEX_EMULATOR_DEMO
+ #include "Input.h"
+ #include "UI.h"
+ #include <SD.h>
+@@ -203,3 +204,4 @@ bool usbStartStopCallback(uint8_t power_condition, bool start, bool load_eject)
+     }
+     return true;
+ }
++#endif
+diff --git a/src/MassStorage.h b/src/MassStorage.h
+index 01b78de..ffbe370 100644
+--- a/src/MassStorage.h
++++ b/src/MassStorage.h
+@@ -3,6 +3,14 @@
+ 
+ #include <Arduino.h>
+ #include "Config.h"
++#ifdef CARDEX_EMULATOR_DEMO
++class MassStorage {
++public:
++ void begin(){} void loop(){} void end(){} void drawIcon(bool){}
++ bool isActive()const{return false;}
++ static void setShouldStop(bool){}
++};
++#else
+ #include <USB.h>
+ #include <USBMSC.h>
+ #include <M5Cardputer.h>
+@@ -37,4 +45,5 @@ int32_t usbWriteCallback(uint32_t lba, uint32_t offset, uint8_t *buffer, uint32_
+ int32_t usbReadCallback(uint32_t lba, uint32_t offset, void *buffer, uint32_t bufsize);
+ bool usbStartStopCallback(uint8_t power_condition, bool start, bool load_eject);
+ 
++#endif // simulator USB exclusion
+ #endif
+diff --git a/src/SettingsScreen.cpp b/src/SettingsScreen.cpp
+index 657e463..abb5045 100644
+--- a/src/SettingsScreen.cpp
++++ b/src/SettingsScreen.cpp
+@@ -1,4 +1,5 @@
+ #include "SettingsScreen.h"
++#include "Reader.h"
+ 
+ #include "Config.h"
+ #include "Input.h"
+@@ -55,6 +56,10 @@ uint16_t swatchColor(const SettingDef &def) {
+ void drawScreen(int selected, int scrollOffset, bool dirty) {
+   const SettingDef *settings = Settings::all();
+   const int total = (int)Settings::count();
++  if(selected>=0&&selected<total){
++    const auto&item=settings[selected];String value=Settings::valueText(item);
++    Reader::focus("settings/"+String(selected)+"/"+value,"Settings. "+String(item.label)+". "+value+". "+String(selected+1)+" of "+String(total)+". Comma and slash change value.");
++  }
+ 
+   UI::drawHeader(dirty ? "Settings *" : "Settings", true,
+                  M5Cardputer.Power.getBatteryLevel());
+diff --git a/src/StatusLed.cpp b/src/StatusLed.cpp
+index 7cc8e3e..7237e59 100644
+--- a/src/StatusLed.cpp
++++ b/src/StatusLed.cpp
+@@ -28,6 +28,10 @@ uint32_t colorForState(LedState state) {
+ } // namespace
+ 
+ void StatusLed::begin() {
++#ifdef CARDEX_EMULATOR_DEMO
++  _available=false;
++  return; // Avoid WS2812 timing work in this keyboard/speech simulator trial.
++#endif
+   _available = M5.Led.begin();
+   if (!_available) {
+     Serial.println("StatusLed: no RGB LED on this board");
+diff --git a/src/TextEditor.cpp b/src/TextEditor.cpp
+index 621d0fe..7da8e52 100644
+--- a/src/TextEditor.cpp
++++ b/src/TextEditor.cpp
+@@ -1,4 +1,30 @@
+ #include "TextEditor.h"
++#include "Reader.h"
++#include "Input.h"
++
++void TextEditor::announceFocus(){
++#ifdef CARDEX_SPEECH
++  if(!fileOpen)return;
++  static String lastFile;static int row=-1,col=-1;static bool dirty=false;static size_t length=0;static uint32_t session=0;
++  bool changed=session!=readerSession||lastFile!=filePath||row!=cursorRow||col!=cursorCol||dirty!=modified||length!=totalChars||!Input::events().empty();
++  if(!changed)return;
++  String line=cursorRow<(int)lines.size()?lines[cursorRow]:String();
++  String context="Editor "+filePath+". Line "+String(cursorRow+1)+" of "+String(lines.size())+", column "+String(cursorCol+1)+". "+(modified?"Modified. ":"Saved. ")+(line.length()?line:"Blank line.");
++  if(changed){
++    String announcement=context;
++    if(lastFile==filePath&&row==cursorRow&&!Input::events().empty()){
++      const auto&key=Input::events().back();char typed=key.text();
++      if(typed)announcement=typed==' '?"Space":String(typed);
++      else if(key.isBackspace()||key.isDeleteForward())announcement="Deleted. "+line;
++      else if(!key.fn&&col!=cursorCol)announcement=cursorCol<(int)line.length()?(line[cursorCol]==' '?String("Space"):String(line[cursorCol]))+". Column "+String(cursorCol+1):String("End of line. Column ")+String(cursorCol+1);
++    }
++    static uint32_t revision=0;
++    Reader::focus("editor/"+String(readerSession)+"/"+String(++revision),announcement);
++    lastFile=filePath;row=cursorRow;col=cursorCol;dirty=modified;length=totalChars;session=readerSession;
++  }
++  Reader::context(context);
++#endif
++}
+ #include "Settings.h"
+ #include "UI.h"
+ #include <M5Cardputer.h>
+@@ -26,6 +52,7 @@ TextEditor::TextEditor() {
+ 
+ // ==================== OPEN FILE ====================
+ bool TextEditor::openFile(fs::FS &fs, const String &path) {
++  ++readerSession;
+   File file = fs.open(path, FILE_READ);
+   if (!file) {
+     return false;
+diff --git a/src/TextEditor.h b/src/TextEditor.h
+index 5baa31e..79f4df7 100644
+--- a/src/TextEditor.h
++++ b/src/TextEditor.h
+@@ -61,6 +61,7 @@ public:
+ 
+   // Display
+   void render();
++  void announceFocus();
+   // Returns true when something changed that the caller must repaint - the
+   // cursor blink, or an autosave.
+   bool update();
+@@ -73,6 +74,7 @@ public:
+   int getTotalLines() const { return lines.size(); }
+ 
+ private:
++  uint32_t readerSession = 0;
+   // File state
+   fs::FS *fileSystem;
+   String filePath;
+diff --git a/src/UI.cpp b/src/UI.cpp
+index 33e0925..9512071 100644
+--- a/src/UI.cpp
++++ b/src/UI.cpp
+@@ -1,4 +1,5 @@
+ #include "UI.h"
++#include "Reader.h"
+ 
+ #include "Feedback.h"
+ #include "StatusLed.h"
+@@ -40,6 +41,9 @@ void UI::pushCanvas() {
+     return; // Already drawn straight to the display.
+   }
+   drawToast();
++#ifdef CARDEX_EMULATOR_DEMO
++  return; // M5GFX panel detection fails in this profile; avoid a null display transfer.
++#endif
+   canvas.pushSprite(0, 0);
+ }
+ 
+@@ -123,6 +127,7 @@ bool UI::toastVisible() {
+ 
+ // ==================== DRAW FOOTER PROGRESS ====================
+ void UI::drawFooterProgress(int percent, const String &status) {
++  Reader::progress(percent,status);
+    int footerY = SCREEN_HEIGHT - FOOTER_HEIGHT;
+    // Don't fully clear, just overlay
+    canvas.fillRect(0, footerY, SCREEN_WIDTH, FOOTER_HEIGHT, MENU_BG);
+@@ -230,6 +235,7 @@ void UI::drawFileList(const std::vector<FileEntry> &files, int selected,
+ 
+ // ==================== SHOW CONFIRM DIALOG ====================
+ bool UI::showConfirmDialog(const String &title, const String &message) {
++  Reader::event(title+". "+message+". Y or Enter confirms. N, Escape or Backspace cancels.");
+   // The chord that opened this dialog is still held; drop it so it cannot be
+   // read as an answer here.
+   Input::flush();
+@@ -297,17 +303,21 @@ bool UI::showConfirmDialog(const String &title, const String &message) {
+   }
+ 
+   Input::flush();
++  Reader::stop();
+   return result;
+ }
+ 
+ // ==================== SHOW INPUT DIALOG ====================
+ String UI::showInputDialog(const String &title, const String &prompt,
+                            const String &defaultValue) {
++  Reader::event(title+". "+prompt+". Enter accepts. Escape cancels.");
+   Input::flush();
+ 
+   String input = defaultValue;
++  bool privateInput=title.indexOf("Password")>=0||title.indexOf("password")>=0;
+ 
+   while (true) {
++    Reader::focus("input/"+title+"/"+input,privateInput?String("Sensitive input. Characters hidden."):(input.length()?input:String("Empty input.")));
+     // Draw dialog
+     int boxW = 220;
+     int boxH = 60;
+@@ -343,6 +353,7 @@ String UI::showInputDialog(const String &title, const String &prompt,
+ 
+     for (const KeyEvent &event : Input::events()) {
+       if (event.isEnter()) {
++        Reader::stop();
+         Input::flush();
+         return input;
+       }
+@@ -350,6 +361,7 @@ String UI::showInputDialog(const String &title, const String &prompt,
+       // fn layer never puts there, so these dialogs could not be cancelled at
+       // all - the only way out was to clear the field and confirm an empty name.
+       if (event.isEsc()) {
++        Reader::stop();
+         Input::flush();
+         return "";
+       }
+@@ -371,6 +383,7 @@ String UI::showInputDialog(const String &title, const String &prompt,
+ 
+ // ==================== SHOW MESSAGE DIALOG ====================
+ void UI::showMessageDialog(const String &title, const String &message) {
++  Reader::event(title+". "+message+". Press any key to close.");
+   Input::flush();
+ 
+   // Draw dialog
+@@ -397,6 +410,7 @@ void UI::showMessageDialog(const String &title, const String &message) {
+   pushCanvas(); // Show dialog
+ 
+   waitForAnyKey();
++  Reader::stop();
+ }
+ 
+ // ==================== WAIT FOR ANY KEY ====================
+@@ -429,6 +443,9 @@ void UI::waitForAnyKey() {
+ 
+ // ==================== SHOW HELP MENU ====================
+ void UI::showHelpMenu(bool isEditorMode) {
++  Reader::event(isEditorMode?
++    "Editor help. Semicolon, period, comma, slash move the cursor. Control S saves, Q closes, F finds, R replaces, Z undoes, Y redoes. Control Space reads the current line and position. Control Shift Space reads more. Control Backspace stops speech. Any other key closes help.":
++    "File manager help. Semicolon up, period down, comma parent folder, slash or Enter opens. Space selects. Control N creates, C copies, X cuts, V pastes, D deletes, R renames, F searches, P properties, O settings, H help. Control Space repeats, Control Backspace stops speech. Any other key closes help.");
+   Input::flush();
+   clearScreen();
+ 
+@@ -482,12 +499,14 @@ void UI::showHelpMenu(bool isEditorMode) {
+   waitForAnyKey();
+ 
+   // Clear screen after help closes
++  Reader::stop();
+   clearScreen();
+   pushCanvas(); // Update clear
+ }
+ 
+ // ==================== SHOW TOAST ====================
+ void UI::showToast(const String &message, uint16_t color) {
++  Reader::event(message);
+   toastMessage = message;
+   toastColor = color;
+   toastStartTime = millis();
+diff --git a/src/main.cpp b/src/main.cpp
+index 273fe40..b12ed40 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -21,6 +21,8 @@
+ #include "Settings.h"
+ #include "StatusLed.h"
+ #include "UI.h"
++#include "Reader.h"
++#include "SimulatorKeyboard.h"
+ #include <M5Cardputer.h>
+ 
+ // Global file manager instance
+@@ -38,14 +40,29 @@ void setup() {
+ 
+   // Initialize M5Cardputer
+   auto cfg = M5.config();
++#ifdef CARDEX_SPEECH
++  cfg.internal_spk = false;
++  cfg.internal_mic = false;
++  cfg.fallback_board = m5::board_t::board_M5CardputerADV;
++#endif
++#ifdef CARDEX_EMULATOR_DEMO
++  M5Cardputer.begin(cfg, false);
++  M5Cardputer.Keyboard.begin(std::make_unique<SimulatorKeyboardReader>());
++#else
+   M5Cardputer.begin(cfg, true); // Enable keyboard
++#endif
++  Serial.printf("CARDEX_BOARD detected=%d\n",int(M5.getBoard()));
++  Reader::begin();
++  Reader::event("Card EX accessible file manager. Loading SD card.");
+   Input::begin();
+   Feedback::begin();
+   StatusLed::begin();
++  Serial.println("CARDEX_STAGE input_feedback_led_ready");
+ 
+   // Set display rotation
+   M5Cardputer.Display.setRotation(1);
+   M5Cardputer.Display.setBrightness(128);
++  Serial.println("CARDEX_STAGE display_ready");
+ 
+   Serial.println("M5Cardputer initialized");
+ 
+@@ -53,6 +70,17 @@ void setup() {
+   // splash used to render in the default palette because loadConfig() ran
+   // later, inside FileManager::init().
+   const bool sdReady = FileManager::initStorage();
++  Serial.printf("CARDEX_STAGE storage_ready=%d\n",sdReady);
++#ifdef CARDEX_EMULATOR_DEMO
++  // Seed only a new, explicitly named simulator exercise directory.
++  if (sdReady && !SD.exists("/reader-demo")) {
++    SD.mkdir("/reader-demo");SD.mkdir("/reader-demo/Projects");
++    auto seed=[](const char*path,const char*text){File f=SD.open(path,FILE_WRITE);if(f){f.print(text);f.close();}};
++    seed("/reader-demo/Welcome.txt","Welcome to accessible Card EX.\nUse semicolon and period to move up and down.\nEnter opens a file or folder.\nControl plus O opens settings.\nControl plus Q closes the editor.\nControl plus S saves edits.\nControl plus Space repeats context.\nControl plus Shift plus Space reads the next speech chunk.\nControl plus Backspace stops speech.\n");
++    seed("/reader-demo/Shopping.txt","Shopping list\nApples\nTea\nBread\n");
++    seed("/reader-demo/Projects/Plan.txt","Project plan\nResearch speech.\nTest keyboard input.\nReview actual hardware before buying.\n");
++  }
++#endif
+   if (sdReady) {
+     Settings::load();
+     Bookmarks::load();
+@@ -60,6 +88,7 @@ void setup() {
+ 
+   // Initialize UI
+   UI::init();
++  Serial.printf("CARDEX_STAGE ui_ready heap=%u\n",ESP.getFreeHeap());
+   UI::clearScreen();
+ 
+   // Show splash screen
+@@ -77,6 +106,7 @@ void setup() {
+   // power-cycling the device.
+   if (!sdReady) {
+     while (!FileManager::initStorage()) {
++      Reader::event("SD card unavailable. Insert a card and press any key to retry.");
+       UI::clearScreen();
+       UI::drawCenteredText("NO SD CARD", 45, ERROR_COLOR);
+       UI::drawCenteredText("Insert a card and", 70, TEXT_COLOR);
+@@ -90,6 +120,7 @@ void setup() {
+ 
+   if (!fileManager.init()) {
+     Serial.println("File manager initialization failed!");
++    Reader::event("File manager initialization failed.");
+     M5Cardputer.Display.setTextColor(ERROR_COLOR, BG_COLOR);
+     UI::drawCenteredText("INIT FAILED!", 95, ERROR_COLOR);
+     while (true) {
+@@ -102,6 +133,7 @@ void setup() {
+   // Clear screen and show initial view
+   UI::clearScreen();
+   fileManager.render();
++  fileManager.announceFocus();
+ 
+   Serial.println("Ready!");
+ }
+@@ -115,6 +147,13 @@ void loop() {
+ 
+   // Turn the raw key list into this frame's events.
+   Input::update();
++#ifdef CARDEX_EMULATOR_DEMO
++  static uint32_t lastDiagnostic=0;
++  if(millis()-lastDiagnostic>1000){
++    lastDiagnostic=millis();uint8_t count=M5.In_I2C.readRegister8(0x34,3,400000);
++    if(count&15)Serial.printf("CARDEX_KEYPAD pending=%u irq=%d keys=%u\n",count&15,digitalRead(11),unsigned(M5Cardputer.Keyboard.keyList().size()));
++  }
++#endif
+ 
+   // Update file manager
+   fileManager.update();
+diff --git a/src/viewers/HexViewer.cpp b/src/viewers/HexViewer.cpp
+index 1d83dfa..ef3e4c1 100644
+--- a/src/viewers/HexViewer.cpp
++++ b/src/viewers/HexViewer.cpp
+@@ -1,4 +1,5 @@
+ #include "HexViewer.h"
++#include "../Reader.h"
+ 
+ #include "../Config.h"
+ #include "../FileOps.h"
+@@ -47,6 +48,9 @@ void HexViewer::run(fs::FS &fs, const String &path) {
+       const uint32_t want = min(bytesPerPage, (uint32_t)sizeof(page));
+       file.seek(offset);
+       const size_t got = file.read(page, want);
++      String spoken="Hex viewer. "+path+". Byte offset "+String(offset)+". ";
++      for(size_t i=0;i<got;++i){char byte[5];snprintf(byte,sizeof(byte),"%02X ",page[i]);spoken+=byte;}
++      Reader::focus("hex/"+path+"/"+String(offset),spoken);
+ 
+       UI::drawHeader(FileOps::getFileName(path) + " [HEX]", true,
+                      M5Cardputer.Power.getBatteryLevel());
+diff --git a/src/viewers/ImageViewer.cpp b/src/viewers/ImageViewer.cpp
+index c8f6eba..d5e4500 100644
+--- a/src/viewers/ImageViewer.cpp
++++ b/src/viewers/ImageViewer.cpp
+@@ -1,4 +1,5 @@
+ #include "ImageViewer.h"
++#include "../Reader.h"
+ 
+ #include "../Config.h"
+ #include "../Input.h"
+@@ -150,6 +151,11 @@ bool ImageViewer::imageSize(fs::FS &fs, const String &path, int &width,
+ }
+ 
+ void ImageViewer::run(fs::FS &fs, const String &path) {
++  Reader::event("Image viewer. "+path+". Image content is not described by this prototype. Escape closes.");
++#ifdef CARDEX_EMULATOR_DEMO
++  Reader::event("Image viewer unavailable in this headless simulator profile. Returning to files.");
++  return;
++#endif
+   Input::flush();
+ 
+   int imageW = 0;
+diff --git a/src/viewers/TextViewer.cpp b/src/viewers/TextViewer.cpp
+index 08d25e9..12db345 100644
+--- a/src/viewers/TextViewer.cpp
++++ b/src/viewers/TextViewer.cpp
+@@ -1,4 +1,5 @@
+ #include "TextViewer.h"
++#include "../Reader.h"
+ 
+ #include "../Config.h"
+ #include "../FileOps.h"
+@@ -126,6 +127,11 @@ void TextViewer::run(fs::FS &fs, const String &path) {
+       needsDraw = false;
+ 
+       String title = FileOps::getFileName(path);
++      String spoken="Text viewer. "+path+". ";
++      for(int r=top;r<min(top+rows,totalLines);++r){
++        spoken+="Line "+String(r+1)+". "+readLine(file,offsets[r],column+maxChars).substring(column)+". ";
++      }
++      Reader::focus("pager/"+path+"/"+String(top)+"/"+String(column),spoken);
+       if (truncated) {
+         title += " [part]";
+       }

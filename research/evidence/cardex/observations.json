@@ -1,0 +1,18 @@
+{
+ "date_utc":"2026-11-04",
+ "later_user_acceptance":"After later buffer/chunk fixes, independent Edge keyboard use: all seems to work pretty well; complete help ending confirmed. Stop-delay observation confounded by control/browser timing.",
+ "later_final_image_sha256":"bb8cb761fc13b6c3067c8d4cc9a427ca3a45d7966edceb55d6bd6fed81b72733",
+ "later_final_app_bytes":1978016,
+ "later_requested_output_buffers":2,
+ "environment":"Velxio in-browser Cardputer ADV simulator; no physical hardware",
+ "interactive_image_sha256":"ba0c5ee4d6022eace6aa00b329d5838927b222d6235a285f327cf33d0dd01dba",
+ "buffered_image_sha256":"6bef608c033a8e85d95e98e66d2439b8d6c85b509b186e2b170ccaba31806b96",
+ "buffered_app_bytes":1977616,
+ "board":24,"polling_keyboard_initialized":true,
+ "checks":["file selection","open text file","line navigation","character entry","undo","save restored contents","close editor","settings label/value navigation","Ctrl-backtick closes settings","recursive search with query echo and result"],
+ "user_listening_first_interactive":"Speech mostly works; brief pauses about 100 ms every few seconds",
+ "buffered_statistics":{"simulated_ms":50003,"frames":1642,"underruns":0,"free_heap":125128,"minimum_free_heap":110712},
+ "hardware_exclusions":["LCD transfers","RGB LED timing","USB mass storage","image viewer"],
+ "untested":["physical device","all application operations","large files and extended editing","native desktop Escape mapping"],
+ "host_polling_test":"Actual class; all 56 matrix positions, press/release separation, duplicate and malformed events; ASan/UBSan passed"
+}

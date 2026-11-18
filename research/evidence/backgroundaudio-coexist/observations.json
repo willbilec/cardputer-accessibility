@@ -1,0 +1,12 @@
+{
+ "date_utc":"2026-11-04",
+ "environment":"Velxio in-browser Cardputer ADV simulator; no physical hardware",
+ "final_image_sha256":"a3c7324ddac2de736472c3a54da4b441a8fb17b32fc698b9982a209e92d1edd7",
+ "mixer_rate":44100,"speech_rate":22050,"effective_speech_software_buffers":2,
+ "wifi":{"status":3,"ssid":"Velxio-GUEST","ip":"10.13.37.42"},
+ "long_phrase":{"first_pcm_emulated_ms":50,"library_done_emulated_ms":22942,"output_underruns":0,"music_enabled":true,"wifi_status_at_done":3},
+ "music_loops_observed":15,"free_heap":125920,"minimum_free_heap":111504,"largest_block":81908,
+ "user_listening":"Both clear, normal voice pitch",
+ "prior_http_trial":{"image_sha256":"445843f053694322faba508edea0326eba37998d9e4446b9caac60a43cff41a8","completed_failed_requests":11,"response_bytes":0,"root_cause":"unresolved"},
+ "limitations":"No verified internet response; final listening run HTTP disabled; WAV from ROM rather than MP3 or SD; firmware millis are not audible physical timing"
+}

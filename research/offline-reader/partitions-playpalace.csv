@@ -1,0 +1,6 @@
+# Unified Cardputer ADV on verified 8 MiB units. Keep NVS and core dump offsets.
+# Name, Type, SubType, Offset, Size, Flags
+nvs, data, nvs, 0x9000, 0x5000,
+otadata, data, ota, 0xE000, 0x2000,
+reader, app, factory, 0x10000, 0x7E0000,
+coredump, data, coredump, 0x7F0000, 0x10000,

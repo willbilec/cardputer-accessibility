@@ -1,0 +1,7 @@
+# Dedicated test installation only. NOT compatible with the earlier Launcher layout.
+# Name, Type, SubType, Offset, Size, Flags
+nvs, data, nvs, 0x9000, 0x5000,
+otadata, data, ota, 0xE000, 0x2000,
+reader, app, factory, 0x10000, 0x280000,
+player, app, ota_0, 0x290000, 0x560000,
+coredump, data, coredump, 0x7F0000, 0x10000,

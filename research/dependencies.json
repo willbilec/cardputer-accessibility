@@ -1,0 +1,102 @@
+[
+  {
+    "name": "arduino-audio-tools",
+    "url": "https://github.com/pschatzmann/arduino-audio-tools.git",
+    "commit": "d6648a0d7b58d0134d68c98cb987f31ba4016dc9"
+  },
+  {
+    "name": "arduino-espeak-ng",
+    "url": "https://github.com/pschatzmann/arduino-espeak-ng.git",
+    "commit": "3b016224076ed73cbfb62a5b46cd76abca44e37f"
+  },
+  {
+    "name": "arduino-posix-fs",
+    "url": "https://github.com/pschatzmann/arduino-posix-fs.git",
+    "commit": "d6ad4dfd01d8028d9c78fdbeb6b7bd1b206f2754"
+  },
+  {
+    "name": "BackgroundAudio",
+    "url": "https://github.com/earlephilhower/BackgroundAudio.git",
+    "commit": "94641100866beae2cc97dc925c0d4562ad168879"
+  },
+  {
+    "name": "Bluetooth-Keyboard-Mouse-Emulator",
+    "url": "https://github.com/geo-tp/Bluetooth-Keyboard-Mouse-Emulator.git",
+    "commit": "2c1ca7a2fcf820d92aa0a0f238ce0d53a3a9995c"
+  },
+  {
+    "name": "CardEX",
+    "url": "https://github.com/prokke/CardEX-for-Cardputer-ADV.git",
+    "commit": "87506624e3e2e0e4bc8e1cb2770b56e94372d185"
+  },
+  {
+    "name": "cardulator",
+    "url": "https://github.com/aroum/cardulator.git",
+    "commit": "bebc53ba2a1f37edb79d2ae78790b5b8aefb291a"
+  },
+  {
+    "name": "ESP8266SAM",
+    "url": "https://github.com/earlephilhower/ESP8266SAM.git",
+    "commit": "bb3e2559387dc89b43cc1a6c37abaa02eb8410d1"
+  },
+  {
+    "name": "Launcher",
+    "url": "https://github.com/bmorcelli/Launcher.git",
+    "commit": "e9d631e0cb2eaf49243fcff62235adac4f44fcb0"
+  },
+  {
+    "name": "M5Cardputer",
+    "url": "https://github.com/m5stack/M5Cardputer.git",
+    "commit": "bf64d3178ab43928fa02365fbe3937cec99716ad"
+  },
+  {
+    "name": "M5Cardputer-UserDemo-ADV",
+    "url": "https://github.com/m5stack/M5Cardputer-UserDemo.git",
+    "commit": "452db44bbc692128cc3972963f00d3253e385b9f"
+  },
+  {
+    "name": "M5GFX",
+    "url": "https://github.com/m5stack/M5GFX.git",
+    "commit": "7cb26b44ab31bb41a0a597196dd2c6d868869a21"
+  },
+  {
+    "name": "M5Unified",
+    "url": "https://github.com/m5stack/M5Unified.git",
+    "commit": "44952cb8e4ac88bf04ad23b9dfd6f4b05c788348"
+  },
+  {
+    "name": "MicroHydra",
+    "url": "https://github.com/echo-lalia/MicroHydra.git",
+    "commit": "49e9d87782a1b42c59b0222365375a4bca6f9a62"
+  },
+  {
+    "name": "MicroHydra-Apps",
+    "url": "https://github.com/echo-lalia/MicroHydra-Apps.git",
+    "commit": "72f3e9104b442fbe1898b227e08e32a4a02b8f67"
+  },
+  {
+    "name": "moonshine",
+    "url": "https://github.com/moonshine-ai/moonshine.git",
+    "commit": "234f60faa0eb388b01cdf7e60aca232af37aefda"
+  },
+  {
+    "name": "MP3PlayerForM5Cardputer",
+    "url": "https://github.com/sanchitminda/MP3PlayerForM5Cardputer.git",
+    "commit": "b7548630a222403424386f2d298043e360661d6a"
+  },
+  {
+    "name": "myLibBuilder",
+    "url": "https://github.com/bmorcelli/myLibBuilder.git",
+    "commit": "cdbdd4e0e75304135f2b39b75a85f76e0fd9c33a"
+  },
+  {
+    "name": "myLibBuilder-keyboot",
+    "url": "https://github.com/bmorcelli/myLibBuilder.git",
+    "commit": "cf56f6a55cd512a908fa455d80b1ee4b6c122e9d"
+  },
+  {
+    "name": "Unity",
+    "url": "https://github.com/ThrowTheSwitch/Unity.git",
+    "commit": "cbcd08fa7de711053a3deec6339ee89cad5d2697"
+  }
+]

@@ -1,0 +1,231 @@
+diff --git a/.gitignore b/.gitignore
+index d34b45e..c0e32e3 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -17,3 +17,8 @@ T-Deck-Pro/
+ 
+ # Local binary builds
+ *.bin
++.pio-access/
++generated/
++build-access.log
++native-access.log
++src/generated_access/
+diff --git a/build_tinyexpr.py b/build_tinyexpr.py
+index f5cf3f1..af87af1 100644
+--- a/build_tinyexpr.py
++++ b/build_tinyexpr.py
+@@ -42,7 +42,7 @@ units_dat_src = os.path.join(gnu_units_dir, "units.dat")
+ embedded_c = os.path.join(project_dir, "src", "embedded_units_dat.c")
+ embedded_h = os.path.join(project_dir, "src", "embedded_units_dat.h")
+ 
+-if os.path.exists(units_dat_src) and (not os.path.exists(embedded_c) or os.path.getmtime(units_dat_src) > os.path.getmtime(embedded_c)):
++if env.get("PIOENV") != "cardulator-access" and os.path.exists(units_dat_src) and (not os.path.exists(embedded_c) or os.path.getmtime(units_dat_src) > os.path.getmtime(embedded_c)):
+     with open(units_dat_src, "rb") as f:
+         lines = f.readlines()
+     clean_lines = [l for l in lines if l.strip() and not l.strip().startswith(b"#")]
+diff --git a/src/main.cpp b/src/main.cpp
+index d2fb538..302f141 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -24,6 +24,11 @@ SET_LOOP_TASK_STACK_SIZE(32768);
+ #include <map>
+ #include <algorithm>
+ #include "config.h"
++#ifdef CARDULATOR_SPEECH
++#include "Reader.h"
++#include "SimulatorKeyboard.h"
++#include "accessible_keys.h"
++#endif
+ 
+ #define VERSION "1.2"
+ #define EXPR_Y 22
+@@ -746,6 +751,9 @@ static lgfx::LovyanGFX& getGfx() {
+ #endif
+ 
+ static inline void flushScreen(bool force_full = false) {
++#ifdef CARDULATOR_HEADLESS
++    return;
++#endif
+ #if defined(CARDULATOR_TDECK_PRO)
+     if (canvas_ready) {
+         TDeckHAL::flushDisplay(canvas, force_full);
+@@ -4594,7 +4602,7 @@ static void handleParamsKey(Keyboard_Class::KeysState& s) {
+                         backlight_brightness = val;
+ #if defined(CARDULATOR_TDECK_PRO)
+                         TDeckHAL::setBrightness(backlight_brightness);
+-#else
++#elif !defined(CARDULATOR_HEADLESS)
+                         M5Cardputer.Display.setBrightness(backlight_brightness);
+ #endif
+                     }
+@@ -4635,7 +4643,7 @@ static void handleParamsKey(Keyboard_Class::KeysState& s) {
+             else backlight_brightness = std::min(255, backlight_brightness + 15);
+ #if defined(CARDULATOR_TDECK_PRO)
+             TDeckHAL::setBrightness(backlight_brightness);
+-#else
++#elif !defined(CARDULATOR_HEADLESS)
+             M5Cardputer.Display.setBrightness(backlight_brightness);
+ #endif
+         } else if (param_selected_idx == 2) {
+@@ -5216,6 +5224,10 @@ void setup() {
+     TDeckHAL::init();
+ #else
+     auto cfg = M5.config();
++#ifdef CARDULATOR_SPEECH
++    cfg.internal_spk=false;cfg.internal_mic=false;
++    cfg.fallback_board=m5::board_t::board_M5CardputerADV;
++#endif
+     // Do not initialize keyboard automatically to prevent hanging on standard Cardputer
+     M5Cardputer.begin(cfg, false);
+     
+@@ -5234,11 +5246,16 @@ void setup() {
+     
+     // blinkLED(3); // Stage 3: I2C probe completed
+     
++#ifdef CARDULATOR_EMULATOR
++    M5Cardputer.Keyboard.begin(std::make_unique<SimulatorKeyboardReader>());
++    Serial.printf("CARDULATOR_BOARD detected=%d\n",int(M5.getBoard()));
++#else
+     if (is_adv) {
+         M5Cardputer.Keyboard.begin(std::make_unique<TCA8418KeyboardReader>());
+     } else {
+         M5Cardputer.Keyboard.begin(std::make_unique<IOMatrixKeyboardReader>());
+     }
++#endif
+ #endif
+     
+     // blinkLED(4); // Stage 4: Keyboard reader initialized
+@@ -5308,15 +5325,27 @@ void setup() {
+     drawCalc();
+     flushScreen(true);
+ #else
++#ifndef CARDULATOR_HEADLESS
+     M5Cardputer.Display.setBrightness(backlight_brightness);
++#else
++    pinMode(38,OUTPUT);digitalWrite(38,LOW);
++#endif
+     last_activity_time = millis();
+     screen_is_on = true;
+ 
++#ifndef CARDULATOR_HEADLESS
+     M5Cardputer.Display.setRotation(1);
++#endif
+ #ifdef ARDUINO
++#ifdef CARDULATOR_HEADLESS
++    canvas_ready=canvas.createSprite(1,1)!=nullptr;
++    if(!canvas_ready){Serial.println("CARDULATOR_FAIL canvas");Reader::event("Not enough memory to start the utility.");return;}
++#else
+     canvas.createSprite(SCR_W, SCR_H);
++#endif
+ #endif
+     // Math & Calculator Splash Screen (Animated Grid, Plot Curve & Glowing Title)
++#ifndef CARDULATOR_HEADLESS
+     {
+         uint16_t DARK_BLUE = 0x084A;
+         uint16_t DARK_CYAN = 0x0210;
+@@ -5450,11 +5479,24 @@ void setup() {
+ #endif
+         delay(200);
+     }
++    #endif // splash excluded in headless profile
+     drawCalc();
++#ifdef CARDULATOR_SPEECH
++    // Finish blocking SD/settings work before audio; setup does not poll Reader.
++    Reader::begin();
++    Reader::event("Cardulator ready. Control O opens tools. Control H reads help.");
++    Serial.printf("CARDULATOR_READY heap=%u minimum=%u\n",ESP.getFreeHeap(),ESP.getMinFreeHeap());
++#endif
+ #endif
+ }
+ 
+-static void processKeyEvent(Keyboard_Class::KeysState s) {
++#ifdef CARDULATOR_SPEECH
++static void processOriginalKeyEvent(Keyboard_Class::KeysState s);
++#include "accessible_ui.inc"
++#else
++#define processOriginalKeyEvent processKeyEvent
++#endif
++static void processOriginalKeyEvent(Keyboard_Class::KeysState s) {
+     // Global Fn Mode Switching and Fn+H popup
+     if (s.fn) {
+         bool handled = false;
+@@ -5576,9 +5618,23 @@ static void processKeyEvent(Keyboard_Class::KeysState s) {
+     GFX.endWrite();
+ }
+ 
++#ifdef CARDULATOR_SPEECH
++static void processKeyEvent(Keyboard_Class::KeysState s){
++    if(!accessibleGlobalKey(s)){
++        AppState before=appState;
++        processOriginalKeyEvent(s);
++        accessibleAnnounce(s,before);
++    }
++}
++#endif
+ void loop() {
++#ifdef CARDULATOR_SPEECH
++    Reader::poll();
++#endif
+     #if defined(ESP32) || defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+-    esp_task_wdt_reset();
++    // Arduino 3 does not subscribe this task by default. Avoid logging on every
++    // iteration when no watchdog subscription exists; preserve an active one.
++    if (esp_task_wdt_status(nullptr) == ESP_OK) esp_task_wdt_reset();
+     delay(1);
+     #elif defined(ARDUINO)
+     delay(1);
+@@ -5590,7 +5646,13 @@ void loop() {
+     last_key_poll = now;
+ 
+ #if !defined(CARDULATOR_TDECK_PRO)
+-    if (screen_off_timeout > 0 && screen_is_on && (now - last_activity_time > (uint32_t)screen_off_timeout * 1000)) {
++    if (!
++#ifdef CARDULATOR_HEADLESS
++        true
++#else
++        false
++#endif
++        && screen_off_timeout > 0 && screen_is_on && (now - last_activity_time > (uint32_t)screen_off_timeout * 1000)) {
+         M5Cardputer.Display.setBrightness(0);
+         screen_is_on = false;
+ #ifdef ARDUINO
+@@ -5661,7 +5723,13 @@ void loop() {
+     }
+     #endif
+ 
+-#if defined(CARDULATOR_TDECK_PRO)
++#if defined(CARDULATOR_SPEECH)
++    Keyboard_Class::KeysState accessibleState;
++    if(accessibleKeys.poll(M5Cardputer.Keyboard,accessibleState,now)){
++        last_activity_time=now;
++        processKeyEvent(accessibleState);
++    }
++#elif defined(CARDULATOR_TDECK_PRO)
+     Keyboard_Class::KeysState s;
+     if (TDeckHAL::pollKeyboard(s)) {
+         last_activity_time = now;
+diff --git a/src/units_bridge.c b/src/units_bridge.c
+index ad8e0c2..debf933 100644
+--- a/src/units_bridge.c
++++ b/src/units_bridge.c
+@@ -147,6 +147,11 @@ int bridge_init(const char *units_dat_path)
+     const char *path_to_use = units_dat_path;
+ 
+ #if defined(ESP_PLATFORM)
++#if defined(CARDULATOR_COMPACT_UNITS)
++    // No PSRAM: do not let a larger SD catalogue reintroduce allocation failure.
++    register_units_vfs();
++    path_to_use = "/vfs_units/units.dat";
++#else
+     // Check if user has units.dat on the SD card
+     if (!path_to_use || !*path_to_use) {
+         const char *sd_paths[] = {
+@@ -168,6 +173,7 @@ int bridge_init(const char *units_dat_path)
+         register_units_vfs();
+         path_to_use = "/vfs_units/units.dat";
+     }
++#endif
+ #else
+     // Native (desktop / tests)
+     if (!path_to_use || !*path_to_use) {

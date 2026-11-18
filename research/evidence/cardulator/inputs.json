@@ -1,0 +1,49 @@
+{
+  "upstream_base": "bebc53ba2a1f37edb79d2ae78790b5b8aefb291a",
+  "speech_upstream": "94641100866beae2cc97dc925c0d4562ad168879",
+  "math_submodules": [
+    " e7ded0943323b0bea083190d2676eed5277fe90d lib/gnu-units (heads/master)",
+    " 670d16e5d689ca55ae88ae482a028f4b3f83df2e lib/tinyexpr-plusplus (670d16e)"
+  ],
+  "image_sha256": "29e230bcef06f02fb675ef23beba4c2d4f0fd15eb9d695cd41b3a794542102df",
+  "app_bytes": 2670000,
+  "factory_partition": [
+    65536,
+    8257536
+  ],
+  "sources": {
+    "src\\accessible_keys.h": "f567c19780c23cdc838ba756bd7e319cbd08946b05c7c966742bed4addf74346",
+    "src\\accessible_ui.inc": "9bf15708b0d35114137ceacde34038b4becd077e660e49ddb774138bbb9a9107",
+    "src\\app_state.h": "27e5f68bd5abd3549509701874814e9b8bce9405fba0e96a914e0944408e471f",
+    "src\\config.h": "47d5533abc1e06f5a6cf50f86ffcd50589a5c83f43a8e1ddafa9d4c48f99c53e",
+    "src\\embedded_units_dat.c": "68d842adaa18fc2098114c6548d0be38704366960e78973f05c011a50c14e8ad",
+    "src\\embedded_units_dat.h": "8998864eb6f9e7ce311c1ae271b869e68872162e4c424ca1281dd03407bc299b",
+    "src\\generated_access\\compact_units.c": "79ac571e3752e126f458415a939c092f3c0ad95f99442e8e36d0772efeede4b5",
+    "src\\generated_access\\Reader.cpp": "b21cba710244fab72d76686855cb0454ad7277f8de30d0f50b634c7ee7a58ceb",
+    "src\\generated_access\\Reader.h": "1cb5369c700c53bbb7673970847d42ae04fa81a11ece6453836309df780817dd",
+    "src\\generated_access\\ReaderChunks.h": "cb4aaca5cb8a82174e1f544cd8e372a8608974984dad0f426ead8cdf0ea88fa9",
+    "src\\generated_access\\SimulatorKeyboard.h": "82263aa2884ff478dda671e9eadd38bc456da8abd072f221caceab579b8784de",
+    "src\\generated_access\\sources.json": "b96bc3d3d3c92182bd3592ce4d1eb4bdf94d19dbeffd9d6d96c70e046c7587b1",
+    "src\\help_engine.cpp": "9657f10a3d70861ac424bc6fc1077e8767577d922aef48005e6d59456eec1829",
+    "src\\help_engine.h": "87584dfc0c2a644c933ddb113d2e7eb617373726248cc07dc1d1a1599a4eed3b",
+    "src\\main.cpp": "c0831aa92484c99d020ea5eab9c7936d466d33028fb66cfb1560d67c12880c6c",
+    "src\\math_engine.cpp": "b68b4e0311ac6574eff2747969c3b8b8a371b3730c08c78e48047030b5b3e804",
+    "src\\math_engine.h": "9655be245e043e41e2cd37a5f33e14f27e0d9a2f3a29704d84db6458e0280802",
+    "src\\math_funcs.h": "846c8b36f8ea907929312450f284b28f23f70afb83240fb3b050db39c8de6f07",
+    "src\\math_speech.h": "18ca702a1e9a038dfff8fd52d04956bdb1a07c07f2fba3e7f17c316db76e100a",
+    "src\\plot_engine.cpp": "b65cf9ce14d15ee85a18c110224363764a1966ea8561180c42e92b021aae2b5e",
+    "src\\plot_engine.h": "4bea3bf6b4c1a9d72772a8a7866801b181156dba2e0560079479052bbe2cc73e",
+    "src\\script_engine.cpp": "e6cd1a511be54becc26b43df76c3df2c07f455ab2633e4718f89523b58ea43a3",
+    "src\\script_engine.h": "1e028397acf512da11d7ab6d984724549aeaae63e70b57405887f22e52a1d0bc",
+    "src\\tdeck_pro.h": "dc5135f9ea245331c07f4bccb8139d434485963f59b76ac9e04e715124c71674",
+    "src\\units_adapter.h": "1c8dc0af013c9c9481272b01494beaeb8fa7132649888d493fc3bab338442c61",
+    "src\\units_bridge.c": "b822d3d61ba7d4bfd51667c214c71b1d19d8f79416f21b687981fd20e0445771",
+    "src\\units_bridge.h": "ba854bcd01a586a2b22de6cc5928db092507b2ac4a32628acd08c56a6158c107",
+    "platformio-access.ini": "c0cc16331d8ad10d4e72ba8ce0874cd150b9cb881dc9b668a88c523b10db6c5b",
+    "partitions-access.csv": "d37d75b292268f54ff27c4f9be61127375a1ac882a4d8761459a9a13c280dda6",
+    "prepare_access.py": "6be89d9751b46a2cfc8307dce4ac479f9e238d6ebb4a04103788cf60cadf660d",
+    "build_tinyexpr.py": "c7c735680c1f85187f441da1672fe56498ba89cec1c73106ecdfd2ffb4160648",
+    "accessibility_units.dat": "204fb027c96058457a7b7a521530c818359874cd174a90bfc6a17b4caca1d043"
+  },
+  "purpose": "Simulator-only headless speech adaptation of actual Cardulator; no physical installation validation"
+}

@@ -1,0 +1,10 @@
+#include <Preferences.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <USB.h>
+#include <USBMSC.h>
+#include <AudioGeneratorMP3.h>
+#include <AudioGeneratorFLAC.h>
+#include <AudioGeneratorAAC.h>
+#include <AudioGeneratorWAV.h>
+#include "player_generated.h"

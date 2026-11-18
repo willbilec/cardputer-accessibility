@@ -1,0 +1,9 @@
+#include <Preferences.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <SD.h>
+#include <AudioGeneratorMP3.h>
+#include <AudioGeneratorFLAC.h>
+#include <AudioGeneratorAAC.h>
+#include <AudioGeneratorWAV.h>
+#include "headless_player_generated.h"
