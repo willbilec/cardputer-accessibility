@@ -264,7 +264,7 @@ class BuilderTests(unittest.TestCase):
         backup = self.root / "original.bin"
         flash("COM4", directory, allow_migration=True, backup=backup, report=lambda _: None)
         commands = [command for command, _ in history]
-        backup_check = history.index(("verify-flash", (0, backup)))
+        backup_check = history.index(("verify-flash", (0, backup.resolve())))
         self.assertLess(backup_check, commands.index("write-flash"))
         arguments = history[commands.index("write-flash")][1]
         self.assertEqual(arguments[2::2], (0, 0x8000, 0xE000, 0x10000))
