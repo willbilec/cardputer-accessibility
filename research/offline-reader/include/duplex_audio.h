@@ -1,5 +1,6 @@
 #pragma once
 #include <ESP32I2SAudio.h>
+#include <atomic>
 
 // Retain the BackgroundAudio TX task and add the paired RX channel to the
 // same controller. Both directions share the 44.1 kHz stereo I2S clock.
@@ -34,17 +35,36 @@ public:
   do {i2s_channel_preload_data(_tx_handle,zero,sizeof(zero),&written);} while(written);
   i2s_event_callbacks_t callbacks{};callbacks.on_sent=_onSent;
   failureStage=5;failureCode=i2s_channel_register_event_callback(_tx_handle,&callbacks,this);if(failureCode!=ESP_OK)return false;
-  failureStage=6;if(xTaskCreate(_taskShim,"BackgroundAudioI2S",8192,this,2,&_taskHandle)!=pdPASS){failureCode=ESP_ERR_NO_MEM;return false;}
+  failureStage=6;
+#ifdef UNIFIED_DIAGNOSTICS
+  const auto task=audioTask;
+#else
+  const auto task=_taskShim;
+#endif
+  if(xTaskCreatePinnedToCore(task,"BackgroundAudioI2S",8192,this,2,&_taskHandle,1)!=pdPASS){
+   failureCode=ESP_ERR_NO_MEM;return false;
+  }
   failureStage=7;failureCode=i2s_channel_enable(_tx_handle);_running=failureCode==ESP_OK;
   if(_running)failureStage=0;
   return _running;
  }
  bool beginCapture(){return _running&&rx&&i2s_channel_enable(rx)==ESP_OK;}
  bool active() const {return _running;}
+#ifdef UNIFIED_DIAGNOSTICS
+ int taskCore() const{return runningCore.load();}
+#endif
  esp_err_t readCapture(void *dst,size_t capacity,size_t &count,unsigned timeoutMs){
   return i2s_channel_read(rx,dst,capacity,&count,timeoutMs);
  }
  void endCapture(){if(rx)i2s_channel_disable(rx);}
 private:
+#ifdef UNIFIED_DIAGNOSTICS
+ std::atomic<int> runningCore{-1};
+ static void audioTask(void* context){
+  auto* audio=static_cast<DuplexAudio*>(context);
+  audio->runningCore=xPortGetCoreID();
+  _taskShim(context);
+ }
+#endif
  i2s_chan_handle_t rx=nullptr;
 };

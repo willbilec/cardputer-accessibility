@@ -1,47 +1,27 @@
-# Cardputer ADV accessibility project
+# Cardputer ADV accessibility workspace
 
-## Goal and current state
+## Active project
 
-Continue the Cardputer ADV feasibility project described in [PROJECT_STATUS.md](PROJECT_STATUS.md): an accessible multi-firmware launcher, a reusable offline speech interface, and accessible test applications, including community applications. The user wants evidence about responsiveness and Wi-Fi on and off, not only a successful build.
+- The workspace root is the GitHub checkout. Run `git status` here before editing and preserve existing changes.
+- The desktop builder is in [builder](builder). The unified firmware, controls, and tests are in [research/offline-reader](research/offline-reader).
+- Use [README.md](README.md) as the index, [BUILDING.md](BUILDING.md) for build, packaging, and test commands, and [FLASHING.md](FLASHING.md) for installation and recovery.
+- The local `archived` directory is excluded from Git. It contains earlier experiments, old release artifacts, and private device captures. Preserve upstream checkout instructions and read them before editing third-party code.
 
-This is an experimental prototype. Later work includes short physical ADV trials and a unified development image. Use [PROJECT_STATUS.md](PROJECT_STATUS.md) for the device results and open acceptance work. Keep builds, simulated tests and physical listening results distinct. Check the actual installed layout and protect existing device data before installing an image.
+## Maintaining accessibility
 
-## Authoring accessible apps and firmware
+- Follow the [accessible app guide](ACCESSIBLE_APP_GUIDE.md) for apps and the [future firmware guide](FUTURE_FIRMWARE_GUIDE.md) for service ownership and lifecycle. For standalone firmware, use the [offline speech guide](TTS_FIRMWARE_GUIDE.md).
+- Preserve keyboard-only use and offline speech. Use Alt for app-specific commands and Option for shared reader controls and performance modifiers that do not change app settings. Keep global shortcuts stable.
+- Announce meaningful focus, state, errors, and progress. Avoid speaking newly entered passwords by default and keep credentials out of diagnostics. The legacy Wi-Fi password entry echoes keys, so account for that existing behavior if editing it.
+- Use [unified controls](research/offline-reader/UNIFIED_CONTROLS.md) as the shortcut reference. The user uses a screen reader. Distinguish automated verification from live device or screen-reader acceptance.
 
-- For any Cardputer ADV app request, follow the [accessible app implementation guide](ACCESSIBLE_APP_GUIDE.md) automatically. Include keyboard-only operation and built-in offline TTS even if the request only describes the app's features. Use the shared unified firmware reader for built-in apps and integrate a reader into standalone firmware.
-- Follow the [future firmware guide](FUTURE_FIRMWARE_GUIDE.md) for shared service ownership, app lifecycle, privacy, installation and physical acceptance. Use the [offline speech integration guide](TTS_FIRMWARE_GUIDE.md) for standalone firmware and ports.
-- Use [unified controls](research/offline-reader/UNIFIED_CONTROLS.md) for the current shortcuts and [project status](PROJECT_STATUS.md) for the work and evidence already recorded.
+## Building and flashing
 
-## Where things live
+- Build with the desktop builder or `python builder/build.py <new-output-directory> --preset all` from the checkout. It packages matching firmware, bootloader, and partition files with checksums. Run the builder and firmware host tests documented in BUILDING.md.
+- For routine app-only updates, verify the target and installed table, retain the previous firmware image for recovery, and flash only the application at `0x10000`. Skip full flash reads unless explicitly requested. A layout migration is a separate confirmed operation. Avoid repeated serial reconnects or flash reads.
+- Verify the device MAC and current ports. For automatic download mode, open the running application port at 1200 baud for about 250 ms, close it, and wait for the download port to reappear. Use G0 and a data cable as the manual recovery route.
+- Use esptool without an automatic reset when the device is already in download mode. Verify the partition digest before writing and the image digest afterward. Reboot and verify the reported version. Where listening is possible, check the spoken startup announcement.
 
-- `research/offline-reader/`: unified firmware and earlier offline launcher, player, HID and speech experiments. Build `unified` or `unified-dev` there and use `python run_host_tests.py` for its host suite.
-- `research/Launcher/`: optional upstream bmorcelli Launcher checkout. The archived experimental ADV speech changes are under `research/patches/`. Read Launcher's own `AGENTS.md` and `CLAUDE.md` before changing it.
-- `research/speech-prototype/`: C++ eSpeak service, calculator and timer-adaptation firmware, Wi-Fi load test, host tests, and its own README. Its PlatformIO configuration references sibling dependency checkouts and `research/Launcher/.pio/core`.
-- `research/MicroHydra/` and `research/MicroHydra-Apps/`: upstream MicroPython firmware and community apps. The original apps are not yet speech-enabled. The prototype timer is a C++ adaptation, not the original Python app.
-- `research/FEASIBILITY.md`: technical evidence and outstanding device tests. Keep it consistent with source and test results.
-- `research/myLibBuilder-keyboot/`: the upstream custom bootloader source examined for return-to-launcher behavior; actual installed bootloader behavior remains unverified.
+## Search and history
 
-Run `git status` in the project or relevant upstream checkout before editing. Downloaded source checkouts are ignored by the root Git repository. Record changes to historical adaptations under `research/patches/`.
-
-## Search and verification
-
-- For routine app-only firmware updates to the Cardputer ADV, use the existing firmware image as the rollback source and skip flash backups. Verify the connected device and its installed partition layout, then write only the application partition. Follow any explicit user request for a backup.
-
-See [Flashing and recovery](FLASHING.md) for the public installation procedure.
-
-- For syntax-aware code searches, use `ast-grep run --pattern "<syntax pattern>" --lang <language> <path>` before text grep. Use `rg` for ordinary text, file names, logs and configuration. Do not add a persistent ast-grep MCP wrapper.
-- When a task concerns when, why or by whom code changed, use scoped local Git history first: `git log -S`, `git log -G`, `git blame`, `git show` and `git diff` as appropriate.
-- Build the speech launcher with `python -m platformio run -e m5stack-cardputer-adv-access -j 6` in `research/Launcher`. Use `-t build-firmware` to force regeneration of the merged binary after partition-table changes; verify its embedded partition table matches the generated one. Also test `m5stack-cardputer` when changing shared launcher code.
-- Build both app images with `python -m platformio run -e cardputer-adv-calculator -e cardputer-adv-timer -j 6` in `research/speech-prototype`. Do not run simultaneous PlatformIO builds in that project: they have previously interfered with build artifacts.
-- Run the host tests described in `PROJECT_STATUS.md`. Host fakes deliberately do not emulate physical codec, keyboard, Wi-Fi, flash, bootloader, or timing.
-- Treat runtime measurements as real only when collected on the target under the stated conditions. Verify the actual running device and connected serial port rather than assuming one is present.
-
-## Accessibility and app design
-
-- Use Alt for app-specific commands, help, and settings adjustments. Keep Option for shared reader controls and performance modifiers that do not change app settings. Preserve existing global shortcuts.
-
-- Preserve keyboard operation and announce semantic selection, state, input, errors, and progress; do not infer focus or reading order from drawing text alone. Avoid interrupting critical messages with excessive redraw or progress announcements.
-- Keep password characters silent by default in new flows and keep credentials out of diagnostics. The unified Wi-Fi screen currently echoes typed characters while redacting them in diagnostics. Account for that existing behavior explicitly when changing the flow.
-- The prototype's `speech_service.h` is a small C++ UI-task API, not a MicroPython binding or full screen-reader accessibility tree. Account for its bounded queue, interruption behavior and fixed voice; test changes with its fake-audio tests and later with actual audio.
-- Launcher and installed firmware are separate programs; each needs its own accessibility support. Check partition sizes and bootloader behavior against the actual image and hardware instead of assuming that all catalog firmware can coexist or return to Launcher.
-- The user uses a screen reader. Prefer text-first documentation and keyboard-accessible flows; distinguish automated checks from live screen-reader and physical-device acceptance.
+- For structural C++ or Python searches, prefer `ast-grep run --pattern "<syntax pattern>" --lang <language> <path>`. Use `rg` for text and filenames. Keep ast-grep local and on demand.
+- For change history, use scoped `git log -S`, `git log -G`, `git blame`, or `git show` in the owning checkout first.

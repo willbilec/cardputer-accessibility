@@ -36,3 +36,17 @@ private:
     static float wave(uint32_t phase);
     float sample(Voice &voice);
 };
+
+class SynthLoop {
+public:
+    static constexpr unsigned count = 5;
+    void start(Synth::Preset preset, unsigned variation);
+    void stop();
+    bool active() const { return framesPerStep != 0; }
+    void mix(int16_t (&pcm)[Synth::blockFrames * 2], float gain);
+
+private:
+    Synth backing;
+    unsigned variation = 0, step = 0;
+    int framesPerStep = 0, framesUntilStep = 0;
+};

@@ -1,11 +1,26 @@
 #include "synth.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace {
 constexpr float phaseScale = 4294967296.0f;
-constexpr float tau = 6.283185307f;
-float sineTable[256];
+constexpr double pi = 3.14159265358979323846;
+constexpr auto makeSineTable() {
+    std::array<float, 256> table{};
+    for (unsigned i = 0; i < table.size(); ++i) {
+        const double angle = (i <= 128 ? int(i) : int(i) - 256) * pi / 128;
+        double term = angle;
+        double sine = angle;
+        for (unsigned n = 1; n <= 11; ++n) {
+            term *= -angle * angle / ((2 * n) * (2 * n + 1));
+            sine += term;
+        }
+        table[i] = float(sine);
+    }
+    return table;
+}
+constexpr auto sineTable = makeSineTable();
 
 float decayOver(float seconds) {
     return std::exp(-1.0f / (seconds * Synth::sampleRate));
@@ -13,11 +28,6 @@ float decayOver(float seconds) {
 }
 
 void Synth::reset() {
-    static const bool initialized = [] {
-        for (unsigned i = 0; i < 256; ++i) sineTable[i] = std::sin(tau * i / 256);
-        return true;
-    }();
-    (void)initialized;
     for (auto &voice : voices) voice = {};
     std::fill_n(history, 512, 0);
     cursor = modulation = 0;
@@ -238,4 +248,81 @@ void Synth::render(int16_t (&pcm)[blockFrames * 2], float gain,
         const float limited = mixed / (1 + 0.36f * std::abs(mixed));
         pcm[2 * i] = pcm[2 * i + 1] = int16_t(limited * gain * 11500);
     }
+}
+
+namespace {
+struct LoopBank {
+    unsigned root;
+    unsigned bpm;
+    const char *patterns[SynthLoop::count];
+};
+
+// Two bars of eighth notes. Hex digits are semitones above the root,
+// or percussion voices for Drums. A dot leaves space for the player.
+constexpr LoopBank loopBanks[] = {
+    {60,  94, {"047.c740259.9752", "037a7530158c8531", "0.4.7.c.2.5.9.5.", "7420.2479532.359", "0.7c.74.5.9e.95."}}, // Piano
+    {62, 144, {"070c707a292e9297", "00c.77a355d.99c7", "03690369a369a963", "0.0c7a7.5.5c9c9.", "c7cde9e7a5acfca5"}}, // Chiptune
+    {38, 112, {"0212021202120212", "0b1a20b10b19214a", "0281408262816032", "0.1.00120.1.6022", "072a9701276a9871"}}, // Drums
+    {52, 104, {"0.007.3.5.559.7.", "0035.7a75579.c97", "0..70.3.2..92.5.", "00c.0a.75.c.579a", "07530357a.753.57"}}, // Bass
+    {65,  76, {"0..7..c.9..5..2.", "c...7.9.e...9.5.", "05a..fc..e9..75.", "7.9.c...5.7.a...", "e..c.9..7..5.2.."}}, // Glass bells
+    {57,  86, {"037ce.c7537ac.a7", "0.4.7c74.2579752", "07c7e7c757a7c7a7", "c.975.32a.753.20", "0.37.c.75.9c.e.c"}}, // Grand piano
+    {55, 152, {"00c7a07755d9c599", "c.e.fc7.e.c.a75.", "037c70a7059e9259", "0c0c7c7c5d5d9d9d", "cba9.a7.579a.c7."}}, // NES chip
+    {58, 108, {"0.04.77.5.59.cc.", "7..a7.30a..ca.53", "03.5.7.7a.75.30.", "0..57..9a..c7..5", "c.c97.757.a53.30"}}, // Analog brass
+    {60,  92, {"0.47.a7.2.59.c9.", "03.c.7a.15.d.8c.", "7.9a.c..5.79.a..", "0..47.c.2..59.e.", "c.9.74..a.7.53.."}}, // Electric piano
+    {55, 118, {"0.4.70c.5.9.95e.", "037.37a.15a.58c.", "0.77.c7.5.99.e9.", "c7.a7.40e9.c9.52", "0..c.77.5..e.99."}}, // Drawbar organ
+};
+
+constexpr int tempoOffsets[] = {0, 8, -8, 16, -4};
+constexpr unsigned chordRoots[][4] = {
+    {0, 0, 5, 7}, {0, 3, 5, 7}, {0, 7, 5, 0}, {0, 2, 5, 7}, {0, 5, 3, 7},
+};
+}
+
+void SynthLoop::start(Synth::Preset preset, unsigned selected) {
+    if (selected >= count) return;
+    stop();
+    backing.preset = preset;
+    variation = selected;
+    const auto &bank = loopBanks[unsigned(preset)];
+    framesPerStep = (Synth::sampleRate * 30) / (int(bank.bpm) + tempoOffsets[variation]);
+}
+
+void SynthLoop::stop() {
+    framesPerStep = framesUntilStep = 0;
+    step = 0;
+    backing.reset();
+}
+
+void SynthLoop::mix(int16_t (&pcm)[Synth::blockFrames * 2], float gain) {
+    if (!active()) return;
+    if (framesUntilStep <= 0) {
+        constexpr unsigned melody = 0, bass = 1, harmony = 2;
+        const auto &bank = loopBanks[unsigned(backing.preset)];
+        const char note = bank.patterns[variation][step];
+        backing.noteOff(melody);
+        const bool drums = backing.preset == Synth::Preset::Drums;
+        if (note != '.') {
+            const unsigned interval = note <= '9' ? note - '0' : note - 'a' + 10;
+            backing.noteOn(drums ? 3 + interval : melody, bank.root + interval);
+        }
+        if (drums && step % 2 == 1 && note != '2')
+            backing.noteOn(5, bank.root + 2);
+        if (step % 4 == 0) {
+            backing.noteOff(bass);
+            backing.noteOff(harmony);
+            if (!drums) {
+                const unsigned root = bank.root - 12 + chordRoots[variation][step / 4];
+                backing.noteOn(bass, root);
+                if (backing.preset != Synth::Preset::Bass && variation != 2)
+                    backing.noteOn(harmony, root + 7);
+            }
+        }
+        step = (step + 1) % 16;
+        framesUntilStep += framesPerStep;
+    }
+    framesUntilStep -= Synth::blockFrames;
+    int16_t accompaniment[Synth::blockFrames * 2];
+    backing.render(accompaniment, gain * 0.32f, false, false, false, 0);
+    for (unsigned i = 0; i < Synth::blockFrames * 2; ++i)
+        pcm[i] = int16_t(std::clamp(int(pcm[i]) + accompaniment[i], -32768, 32767));
 }

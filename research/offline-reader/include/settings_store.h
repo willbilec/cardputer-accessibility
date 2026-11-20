@@ -37,6 +37,16 @@ public:
  void flushDeferred(){if(cardPending&&save())cardPending=false;}
  bool putBool(const char *key,bool value){flash.putBool(key,value);values[key]=value?"1":"0";return save();}
  bool putString(const char *key,const String &value){flash.putString(key,value);values[key]=value.c_str();return save();}
+ bool putMirroredString(const char *key,const String &value){
+  const bool storedInFlash=flash.putString(key,value)==value.length();
+  const auto previous=values.find(key);
+  const bool existed=previous!=values.end();
+  const std::string old=existed?previous->second:std::string{};
+  values[key]=value.c_str();
+  if(save()||storedInFlash)return true;
+  if(existed)values[key]=old;else values.erase(key);
+  return false;
+ }
  bool putWifi(const String &ssid,const String &password){
   values["wifiSsid"]=ssid.c_str();
   values["wifiPass"]=password.c_str();

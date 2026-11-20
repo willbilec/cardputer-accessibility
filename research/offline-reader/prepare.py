@@ -142,8 +142,9 @@ def prepare(environment):
             str(core / "klatt-tts/src"), str(core / "g2p/include"), str(core / "g2p/include/g2p"), str(core / "g2p/src")])
         env.BuildSources("$BUILD_DIR/klatt-core", str(core / "klatt-tts/src"))
         env.BuildSources("$BUILD_DIR/klatt-g2p", str(core / "g2p/src"))
-    if environment in ("accessible-hid", "unified-dev", "unified",
-                       "unified-playpalace"):
+    if (environment in ("accessible-hid", "unified-dev", "unified", "unified-playpalace")
+            or (environment.startswith("unified-custom-")
+                and "-DUNIFIED_KEYBOARD_APP=1" in " ".join(env.GetProjectOption("build_src_flags")))):
         import importlib.util
         spec = importlib.util.spec_from_file_location("prepare_hid", ROOT / "prepare_hid.py")
         hid = importlib.util.module_from_spec(spec); spec.loader.exec_module(hid); hid.prepare()
@@ -182,3 +183,20 @@ if __name__ == "__main__":
 else:
     Import("env")
     prepare(env["PIOENV"])
+    if env["PIOENV"].startswith("unified-custom-"):
+        selected_flags = " ".join(env.GetProjectOption("build_src_flags"))
+        mp3 = "-DMEDIA_DECODER_MP3=1" in selected_flags
+        speech_flags = [name for name in ("UNIFIED_PLAYPALACE", "UNIFIED_NVDA_REMOTE", "UNIFIED_BIBLE_TEMPO")
+                        if f"-D{name}=1" in selected_flags]
+
+        def selected_audio_source(build_env, source):
+            parts = Path(source.srcnode().get_path()).parts
+            if "backgroundaudio-trial" in parts:
+                if "libhelix-aac" in parts or ("libmad" in parts and not mp3):
+                    return None
+                if "libespeak-ng" in parts and speech_flags:
+                    defines = [*build_env.get("CPPDEFINES", []), *speech_flags]
+                    return build_env.Object(source, CPPDEFINES=defines)[0]
+            return source
+
+        env.AddBuildMiddleware(selected_audio_source)

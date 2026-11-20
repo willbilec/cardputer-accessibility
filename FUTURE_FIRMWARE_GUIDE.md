@@ -35,10 +35,9 @@ implementation history and links to the underlying experiments.
 
 Distinguish app-only binaries from merged simulator or installation images.
 Read the target's actual partition table and verify the app offset, size and
-alignment against the exact binary. The development unit's verified
-app-only slot was 2.5 MiB at `0x10000`. A larger build failed to boot until
-replaced by a fitted build. The candidate `partitions-unified.csv` layout
-and experimental Launcher layouts have separate recovery requirements.
+alignment against the exact binary. The current builder targets the
+7.875 MiB application partition at `0x10000`. The
+[flashing guide](FLASHING.md) covers partition verification and migration.
 
 Record the image size and SHA-256, bootloader, USB port and device identity.
 Preserve existing SD data and flash settings. Before changing an installed

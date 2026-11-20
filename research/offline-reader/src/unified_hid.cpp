@@ -1,8 +1,14 @@
 #include "unified_hid.h"
+#if defined(UNIFIED_CUSTOM_BUILD) && !defined(UNIFIED_KEYBOARD_APP)
+#include <USB.h>
+#include <tusb.h>
+
+bool startUnifiedUSB(){return USB.begin();}
+bool unifiedUSBConnected(){return tud_mounted();}
+#else
 #include <BLEDevice.h>
 #include <Preferences.h>
 #include "bluetooth_generated_api.h"
-#include "hid_reports.h"
 #include <USB.h>
 #include <USBHIDKeyboard.h>
 #include <USBHIDMouse.h>
@@ -207,7 +213,11 @@ bool startAdvertising(){
   target.type=bytes[0];
   for(size_t i=0;i<sizeof(target.val);++i)target.val[i]=bytes[i+1];
   int status=ble_gap_wl_set(&target,1);
+#ifdef UNIFIED_DIAGNOSTICS
   if(status){Serial.printf("UF_BLE slot filter failed=%d\n",status);return false;}
+#else
+  if(status){return false;}
+#endif
   params.filter_policy=BLE_HCI_ADV_FILT_CONN;
  }
  return ble_gap_adv_start(BLE_OWN_ADDR_RANDOM,nullptr,BLE_HS_FOREVER,&params,gapEvent,nullptr)==0;
@@ -280,10 +290,14 @@ KeyboardStartup startKeyboardSlot(int slot,const String &peer,bool pair,const St
    return KeyboardStartup::InsufficientMemory;
   if(!events)events=xQueueCreate(12,sizeof(Event));
   if(!events)return KeyboardStartup::InsufficientMemory;
+#ifdef UNIFIED_DIAGNOSTICS
   Serial.println("UF_BLE controller");
+#endif
   if(!BLEDevice::init(keyboardDeviceName(slot)))return KeyboardStartup::Controller;
   radio=true;
+#ifdef UNIFIED_DIAGNOSTICS
   Serial.printf("UF_BLE services heap=%u\n",ESP.getFreeHeap());
+#endif
   ble_hs_cfg.sm_io_cap=BLE_HS_IO_NO_INPUT_OUTPUT;
   ble_hs_cfg.sm_bonding=1;
   ble_hs_cfg.sm_mitm=0;
@@ -306,7 +320,11 @@ bool pollKeyboardSlot(String &pairedPeer){
    // Android can connect using a private address. Check the peer identity
    // after bond encryption rather than rejecting the initial address.
    accepting=enabled&&!belongsToOtherSlot(event.address);
+#ifdef UNIFIED_DIAGNOSTICS
    if(accepting){securityStarted=millis()|1;Serial.println("UF_BLE link opened");}
+#else
+   if(accepting){securityStarted=millis()|1;}
+#endif
    if(!accepting)disconnect(connection);
    break;
   case EventType::Encrypted:{
@@ -314,20 +332,37 @@ bool pollKeyboardSlot(String &pairedPeer){
    securityStarted=0;
    if(belongsToOtherSlot(event.address)){disconnect(connection);break;}
    String peer=peerKey(event.address);
+#ifdef UNIFIED_DIAGNOSTICS
    if(!pairing&&selectedPeer!=peer){Serial.println("UF_BLE encrypted peer differs from slot");disconnect(connection);break;}
+#else
+   if(!pairing&&selectedPeer!=peer){disconnect(connection);break;}
+#endif
    if(pairing)pairedPeer=selectedPeer=peer;
    pairing=false;allowRepair=false;authenticated=true;
+#ifdef UNIFIED_DIAGNOSTICS
    Serial.println("UF_BLE authenticated");
+#endif
    break;
   }
   case EventType::Rejected:
+#ifdef UNIFIED_DIAGNOSTICS
    if(connection==event.handle){Serial.println("UF_BLE encryption failed");disconnect(connection);}
+#else
+   if(connection==event.handle){disconnect(connection);}
+#endif
    break;
   case EventType::Disconnect:
+#ifdef UNIFIED_DIAGNOSTICS
    if(connection==event.handle){connection=noConnection;securityStarted=0;authenticated=accepting=false;Serial.println("UF_BLE disconnected");}
+#else
+   if(connection==event.handle){connection=noConnection;securityStarted=0;authenticated=accepting=false;}
+#endif
    break;
   case EventType::LinkError:
-   Serial.printf("UF_BLE link failed status=%u\n",unsigned(event.handle));break;
+#ifdef UNIFIED_DIAGNOSTICS
+   Serial.printf("UF_BLE link failed status=%u\n",unsigned(event.handle));
+#endif
+   break;
   }
  }
  // Let hosts begin bond encryption during discovery, as the factory demo
@@ -335,7 +370,9 @@ bool pollKeyboardSlot(String &pairedPeer){
  if(securityStarted&&int32_t(millis()-securityStarted)>700){
   securityStarted=0;
   int result=ble_gap_security_initiate(connection);
+#ifdef UNIFIED_DIAGNOSTICS
   Serial.printf("UF_BLE security fallback=%d\n",result);
+#endif
   if(result!=0&&result!=BLE_HS_EALREADY)disconnect(connection);
  }
  if(radio&&!enabled&&connection!=noConnection){
@@ -346,14 +383,16 @@ bool pollKeyboardSlot(String &pairedPeer){
   if(!enabled)shutdownRadio();
   else if(!ble_gap_adv_active()){
    enabled=startAdvertising();
+#ifdef UNIFIED_DIAGNOSTICS
    Serial.printf("UF_BLE advertising restarted=%d\n",enabled);
+#endif
   }
  }
  return authenticated;
 }
 
-void sendUnifiedHid(bool usb,bool mouse,bool release){
- if(usb&&!tud_hid_ready())return;
+bool sendUnifiedHid(bool usb,bool mouse,const keyboardMap::Map &map,bool alternate,bool release,bool optionTap){
+ if(usb&&!tud_hid_ready())return false;
  auto &keyboard=M5Cardputer.Keyboard;
  const auto &state=keyboard.keysState();
  if(mouse||release){
@@ -367,11 +406,14 @@ void sendUnifiedHid(bool usb,bool mouse,bool release){
   }
  }
  if(!mouse||release){
-  auto bytes=release?std::array<uint8_t,8>{}:hidReports::keyboard(state.modifiers,state.hid_keys);
+  auto bytes=release?std::array<uint8_t,8>{}:keyboardMap::report(map,alternate,state.fn,optionTap,
+      [&](int key){return keyboard.keyDown(key/14,key%14);});
   if(usb){
    KeyReport report{};report.modifiers=bytes[0];
    memcpy(report.keys,bytes.data()+2,sizeof(report.keys));
    usbKeyboard.sendReport(&report);
   }else notify(keyboardReport,keyboardSubscriber,bytes.data(),bytes.size());
  }
+ return true;
 }
+#endif

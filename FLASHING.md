@@ -1,5 +1,10 @@
 # Flashing and recovery
 
+The [desktop builder](BUILDING.md) checks the connected chip and partition
+table, then shows USB recovery instructions before it writes. Use **Flash a
+saved build** with the saved `build.json` to reinstall a previous builder image.
+You can also use the manual procedure below.
+
 Use an **M5Stack Cardputer ADV with 8 MiB flash**, a data-capable USB cable, and Python. The release ZIP contains the bootloader, partition table, OTA initialization data, application, and their SHA-256 checksums. Extract it and run the commands from the extracted directory. Substitute your download port for `PORT` in each command.
 
 ```sh
@@ -15,7 +20,12 @@ python -c "from hashlib import sha256; from pathlib import Path; entries=[line.s
 
 ## Enter download mode
 
-Close any serial monitor. Switch the Cardputer ADV off, hold its G0 button, switch it on, then release G0. Connect USB and list the ports again. On Windows a port is typically named `COM4` or similar. On Linux it is typically `/dev/ttyACM0` and on macOS it is typically `/dev/cu.usbmodem…`.
+Close serial monitors and unplug USB. Switch the Cardputer ADV off. Press and
+hold G0, the button on the back edge just to the right of the power switch.
+Keep it held while connecting the device with a USB-C data cable. Release G0
+after USB powers the device, then list ports again. The download port may
+differ from the application port. On Windows it is typically named `COM4` or
+similar. On Linux it is typically `/dev/ttyACM0`.
 
 ```sh
 python -m esptool --chip esp32s3 --port PORT --before no-reset --after no-reset flash-id
@@ -41,11 +51,10 @@ The reader app starts at `0x10000` and has `0x7E0000` bytes. The installation wr
 
 ## App-only update from the same layout
 
-Read and compare the installed partition table before writing just the application. Continue only if the comparison prints **Partition table matches**.
+Verify the installed partition digest against the build before writing only the application. Continue only after verification succeeds.
 
 ```sh
-python -m esptool --chip esp32s3 --port PORT --before no-reset --after no-reset read-flash 0x8000 0xC00 installed-partitions.bin
-python -c "from pathlib import Path; from sys import exit; a=Path('installed-partitions.bin').read_bytes(); b=Path('partitions.bin').read_bytes(); exit('Partition table differs') if a != b else print('Partition table matches')"
+python -m esptool --chip esp32s3 --port PORT --before no-reset --after no-reset verify-flash 0x8000 partitions.bin
 python -m esptool --chip esp32s3 --port PORT --before no-reset --after watchdog-reset write-flash --flash-size 8MB 0x10000 firmware.bin
 ```
 

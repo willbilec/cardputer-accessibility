@@ -5,7 +5,7 @@
 #include <esp_http_client.h>
 #include <mbedtls/sha256.h>
 #include <ogg/ogg.h>
-#include <vorbis/vorbisfile.h>
+#include "media_decoder.h"
 #include <algorithm>
 #include <atomic>
 #include <fcntl.h>
@@ -72,8 +72,10 @@ int bank = -1;
 size_t bankRemaining = 0, bankPadding = 0;
 unsigned bankVolume = 100;
 Adpcm bankDecoder;
+#ifdef UNIFIED_DIAGNOSTICS
 uint32_t bankStarts = 0, bankOutputBytes = 0;
 uint32_t networkStarts = 0;
+#endif
 
 unsigned word(const uint8_t* bytes) { return bytes[0] | unsigned(bytes[1]) << 8; }
 unsigned dword(const uint8_t* bytes) { return word(bytes) | word(bytes + 2) << 16; }
@@ -119,7 +121,9 @@ bool startBank(fs::FS& storage, const String& name, unsigned volume) {
         bankPadding = (1024 - (samples * 4) % 1024) % 1024;
         bankVolume = std::min(volume, 100u);
         bankDecoder = {};
+#ifdef UNIFIED_DIAGNOSTICS
         ++bankStarts;
+#endif
         return true;
     }
     return false;
@@ -184,31 +188,23 @@ bool wav(Reader& reader) {
 }
 
 bool vorbis(Reader& reader) {
-    ov_callbacks callbacks{};
-    callbacks.read_func = [](void* destination, size_t size, size_t count, void* source) {
-        if (!size || count > maxDownload / size) return size_t(0);
-        return static_cast<Reader*>(source)->read(destination, size * count) / size;
+    const auto read = [](void* context, uint8_t* destination, size_t capacity) {
+        auto& source = *static_cast<Reader*>(context);
+        const auto count = source.read(destination, capacity);
+        return source.failed ? -1 : int(count);
     };
-    OggVorbis_File decoder{};
-    if (ov_open_callbacks(&reader, &decoder, nullptr, 0, callbacks)) return false;
-    bool valid = true;
-    char buffer[512];
-    int stream = 0;
+    MediaDecoder decoder;
+    if (!decoder.openVorbis(read, &reader)) return false;
+    MediaDecoder::Block block;
     while (!reader.effect.stop) {
-        const long count = ov_read(&decoder, buffer, sizeof(buffer), 0, 2, 1, &stream);
-        if (!count) break;
-        if (count < 0) { valid = false; break; }
-        const auto* info = ov_info(&decoder, -1);
-        if (!info || info->channels < 1 || info->channels > 2 || info->rate < 8000 ||
-            info->rate > 48000 || (reader.effect.rate && info->rate != reader.effect.rate)) {
-            valid = false;
-            break;
-        }
-        reader.effect.rate = info->rate;
-        queue(reader.effect, reinterpret_cast<const uint8_t*>(buffer), count, info->channels);
+        const auto result = decoder.read(block);
+        if (result == MediaDecoder::Result::End) return reader.effect.rate && !reader.failed;
+        if (result == MediaDecoder::Result::Error ||
+            (reader.effect.rate && block.rate != reader.effect.rate)) return false;
+        reader.effect.rate = block.rate;
+        queue(reader.effect, reinterpret_cast<const uint8_t*>(block.stereo), block.frames * 4, 2);
     }
-    ov_clear(&decoder);
-    return valid && reader.effect.rate && !reader.failed && !reader.effect.stop;
+    return false;
 }
 
 void worker(void* argument) {
@@ -320,7 +316,9 @@ void request(fs::FS& storage, const String& base, const String& name, unsigned v
         return;
     }
     effect = std::move(next);
+#ifdef UNIFIED_DIAGNOSTICS
     ++networkStarts;
+#endif
 }
 
 void cancel() {
@@ -330,6 +328,7 @@ void cancel() {
     replacement.reset();
     pendingBytes = pendingOffset = 0;
 }
+bool busy(){return discardAudio||effect||bank>=0;}
 
 void changeVolume(unsigned previous, unsigned current) {
     if (!current) { cancel(); return; }
@@ -387,7 +386,9 @@ void tick(Output output, void (*discard)()) {
         if (pendingBytes > pendingOffset) {
             const auto written = output(16000, pending + pendingOffset, pendingBytes - pendingOffset);
             pendingOffset += written;
+#ifdef UNIFIED_DIAGNOSTICS
             bankOutputBytes += written;
+#endif
         }
         if (!bankRemaining && !bankPadding && pendingOffset == pendingBytes) {
             ::close(bank);
@@ -407,8 +408,10 @@ void tick(Output output, void (*discard)()) {
     }
 }
 
+#ifdef UNIFIED_DIAGNOSTICS
 void status() {
     Serial.printf("PPFX bank=%u output=%u network=%u active=%u\n", bankStarts, bankOutputBytes,
                   networkStarts, unsigned(bool(effect)));
 }
+#endif
 }

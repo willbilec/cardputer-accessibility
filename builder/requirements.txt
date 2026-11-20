@@ -1,0 +1,4 @@
+wxPython>=4.2,<5
+pyserial==3.5
+platformio==6.2.0
+esptool==5.3.0

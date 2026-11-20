@@ -15,6 +15,7 @@ using ConnectWifi = bool (*)();
 using ReturnHome = void (*)();
 void open(fs::FS& card, bool mounted, Speak speak, ConnectWifi connectWifi, ReturnHome returnHome);
 void close();
+bool busy();
 void tick(bool speechBusy);
 bool canRepeatMenuArrow();
 void key(const Key& key, bool repeated = false);

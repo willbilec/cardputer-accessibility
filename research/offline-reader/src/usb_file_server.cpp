@@ -1,6 +1,8 @@
 #include "usb_sd.h"
 #include <Arduino.h>
 #include <SD.h>
+#include <memory>
+#include <new>
 #ifdef UNIFIED_WIFI_SD
 #include <WiFi.h>
 #include <lwip/sockets.h>
@@ -11,13 +13,14 @@ constexpr size_t chunkSize=256;
 constexpr size_t maxLine=4*chunkSize+32;
 enum class Operation { Idle, List, Read, Write, StreamRead, StreamWrite };
 Operation operation=Operation::Idle;
-bool canWrite=false, overflow=false, streamFailed=false;
+bool canWrite=false, overflow=false, streamFailed=false, replacing=false;
 bool (*setClock)(int64_t)=nullptr;
 File file;
 String destination, temporary, reply;
 char input[maxLine+1];
 size_t inputSize=0, sent=0;
-uint8_t streamBuffer[4096];
+constexpr size_t streamCapacity=4096;
+std::unique_ptr<uint8_t[]> streamBuffer;
 size_t streamRemaining=0, streamSize=0, streamSent=0;
 uint32_t lastCommand=0;
 #ifdef UNIFIED_WIFI_SD
@@ -39,7 +42,8 @@ void cancel(){
  if(file)file.close();
  if(!temporary.isEmpty())SD.remove(temporary);
  temporary="";destination="";
- streamRemaining=streamSize=streamSent=0;streamFailed=false;
+ streamBuffer.reset();
+ streamRemaining=streamSize=streamSent=0;streamFailed=replacing=false;
  operation=Operation::Idle;
 }
 
@@ -131,7 +135,27 @@ void next(){
 
 void commit(){
  file.flush();file.close();
- bool ok=!SD.exists(destination)&&SD.rename(temporary,destination);
+ const bool exists=SD.exists(destination);
+ if(exists&&replacing){
+  File original=SD.open(destination,FILE_READ);
+  if(!original||original.isDirectory()){cancel();respond("ERR Destination is not a file");return;}
+  original.close();
+  const String backup=temporary+".bak";
+  if(SD.exists(backup)||!SD.rename(destination,backup)){
+   cancel();respond("ERR Could not stage the original file");return;
+  }
+  if(!SD.rename(temporary,destination)){
+   bool restored=SD.rename(backup,destination);
+   cancel();
+   respond(restored?"ERR Could not replace file. Original restored":
+                    "ERR Could not restore original file. It remains on SD as "+backup);
+   return;
+  }
+  temporary="";
+  bool removed=SD.remove(backup);
+  cancel();respond(removed?"OK":"OK Backup remains on SD as "+backup);return;
+ }
+ bool ok=!exists&&!replacing&&SD.rename(temporary,destination);
  if(ok)temporary="";
  cancel();respond(ok?"OK":"ERR Could not save destination");
 }
@@ -141,24 +165,24 @@ bool pollStream(Read receive,Write sendBytes,bool usb){
  if(operation==Operation::StreamRead){
   if(streamSent==streamSize){
    if(!streamRemaining){cancel();return true;}
-   int count=file.read(streamBuffer,std::min(sizeof(streamBuffer),streamRemaining));
+   int count=file.read(streamBuffer.get(),std::min(streamCapacity,streamRemaining));
    if(count<=0){cancel();return true;}
    streamSize=count;streamSent=0;streamRemaining-=count;
   }
-  int count=sendBytes(streamBuffer+streamSent,streamSize-streamSent);
+  int count=sendBytes(streamBuffer.get()+streamSent,streamSize-streamSent);
   if(count>0){streamSent+=count;lastCommand=millis();}
   return true;
  }
  if(operation!=Operation::StreamWrite)return false;
  if(streamRemaining){
-  const size_t capacity=usb?usbSDBurstSize:sizeof(streamBuffer);
+  const size_t capacity=usb?usbSDBurstSize:streamCapacity;
   const size_t needed=std::min(capacity-streamSize,streamRemaining);
-  int count=receive(streamBuffer+streamSize,needed);
+  int count=receive(streamBuffer.get()+streamSize,needed);
   if(count<=0)return true;
   streamSize+=count;
   streamRemaining-=count;lastCommand=millis();
   if(streamSize==capacity||!streamRemaining){
-   if(!streamFailed&&file.write(streamBuffer,streamSize)!=streamSize)streamFailed=true;
+   if(!streamFailed&&file.write(streamBuffer.get(),streamSize)!=streamSize)streamFailed=true;
    streamSize=0;
    if(usb&&streamRemaining){
     if(streamFailed){cancel();respond("ERR SD write failed");}
@@ -207,12 +231,14 @@ void handle(const char *line){
  }
  const char *arg=strchr(line,' ');
  const bool renaming=!strncmp(line,"RENAME ",7);
- const bool streamUpload=!strncmp(line,"PUT ",4);
+ const bool replaceUpload=!strncmp(line,"REPLACE ",8);
+ const bool streamUpload=replaceUpload||!strncmp(line,"PUT ",4);
  size_t uploadSize=0;
  if(streamUpload){
   char *end=nullptr;
-  unsigned long long size=strtoull(line+4,&end,10);
-  if(line[4]<'0'||line[4]>'9'||*end!=' '||size>UINT32_MAX){
+  const char* start=arg+1;
+  unsigned long long size=strtoull(start,&end,10);
+  if(*start<'0'||*start>'9'||*end!=' '||size>UINT32_MAX){
    respond("ERR Invalid upload size");return;
   }
   uploadSize=size;arg=end;
@@ -228,7 +254,11 @@ void handle(const char *line){
   file=SD.open(path,FILE_READ);
   if(!file||file.isDirectory()!=listing){cancel();respond(listing?"ERR Folder unavailable":"ERR File unavailable");return;}
   operation=listing?Operation::List:streamDownload?Operation::StreamRead:Operation::Read;
-  if(streamDownload)streamRemaining=file.size();
+  if(streamDownload){
+   streamBuffer.reset(new(std::nothrow) uint8_t[streamCapacity]);
+   if(!streamBuffer){cancel();respond("ERR Not enough memory for SD transfer");return;}
+   streamRemaining=file.size();
+  }
 #ifdef UNIFIED_WIFI_SD
   if(networkMode&&listing)destination=path;
 #endif
@@ -261,13 +291,24 @@ void handle(const char *line){
   respond(!SD.exists(path)&&SD.mkdir(path)?"OK":"ERR Could not create folder");return;
  }
  if(!strncmp(line,"WRITE ",6)||streamUpload){
-  if(SD.exists(path)){respond("ERR Destination exists");return;}
+  if(path=="/"){respond("ERR Cannot upload to SD root as a file");return;}
+  const bool exists=SD.exists(path);
+  if(replaceUpload){
+   if(!exists){respond("ERR Destination no longer exists");return;}
+   File original=SD.open(path,FILE_READ);
+   if(!original||original.isDirectory()){respond("ERR Destination is not a file");return;}
+  }else if(exists){respond("ERR Destination exists");return;}
   int slash=path.lastIndexOf('/');
   String name=path.substring(0,slash+1)+".cardputer-transfer-"+String(millis(),HEX)+".tmp";
   if(SD.exists(name)){respond("ERR Temporary name is busy");return;}
   file=SD.open(name,FILE_WRITE);
   if(!file){respond("ERR Cannot open destination folder");return;}
   temporary=name;destination=path;
+  if(streamUpload){
+   streamBuffer.reset(new(std::nothrow) uint8_t[streamCapacity]);
+   if(!streamBuffer){cancel();respond("ERR Not enough memory for SD transfer");return;}
+  }
+  replacing=replaceUpload;
   operation=streamUpload?Operation::StreamWrite:Operation::Write;
   if(streamUpload)streamRemaining=uploadSize;
   respond("OK");return;

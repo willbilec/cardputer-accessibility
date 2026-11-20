@@ -22,6 +22,7 @@ def main():
         shell = ["wsl", "--exec", *shell]
     for name, source, flags in [
         ("core", "test/test_core.cpp", ""),
+        ("file-playback-formats", "test/test_file_playback_formats.cpp", "-Iinclude"),
         ("keyboard-app-models", "test/test_keyboard_apps.cpp", ""),
         ("global-shortcuts", "test/test_global_shortcuts.cpp", "-Iinclude"),
         ("synth", "test/test_synth.cpp", "-Iinclude src/synth.cpp"),

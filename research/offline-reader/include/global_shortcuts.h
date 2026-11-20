@@ -31,4 +31,17 @@ inline Command route(const Key &k) {
     }
     return Command::None;
 }
+
+inline Command routeSynth(const Key &k) {
+    if (!k.down || !k.alt || k.option || k.control || k.shift) return Command::None;
+    if (k.function) {
+        if (k.row == 2 && k.col == 11) return Command::VolumeUp;
+        if (k.row == 3 && k.col == 11) return Command::VolumeDown;
+        if (k.row == 3 && k.col == 10) return Command::RateDown;
+        if (k.row == 3 && k.col == 12) return Command::RateUp;
+        return Command::None;
+    }
+    if (k.row == 3 && k.col == 13) return Command::Stop;
+    return route(k);
+}
 }

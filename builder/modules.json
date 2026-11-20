@@ -1,0 +1,131 @@
+{
+  "schema": 1,
+  "launcher": "0.2.0",
+  "components": {
+    "media-decoder": {
+      "sources": ["media_decoder.cpp"]
+    },
+    "file-audio-pipeline": {
+      "requires": ["media-decoder"],
+      "flags": ["-DUNIFIED_COMPRESSED_MEDIA=1"]
+    },
+    "mp3-codec": {
+      "requires": ["media-decoder"],
+      "flags": ["-DMEDIA_DECODER_MP3=1"]
+    },
+    "vorbis-codec": {
+      "requires": ["media-decoder"],
+      "sources": ["micro_vorbis_demux.cpp"],
+      "flags": [
+        "-DMEDIA_DECODER_VORBIS=1",
+        "-I \"$PROJECT_LIBDEPS_DIR/$PIOENV/micro-vorbis/src/tremor\"",
+        "-I \"$PROJECT_LIBDEPS_DIR/$PIOENV/micro-vorbis/lib/micro-ogg-demuxer/include\"",
+        "-I \"$PROJECT_LIBDEPS_DIR/$PIOENV/micro-vorbis/lib/micro-ogg-demuxer/src\""
+      ],
+      "libraries": ["https://github.com/esphome-libs/micro-vorbis.git#ae1b2225950c584b69db0f5eb962e1baf60ed34a"],
+      "scripts": ["pre:optimize_vorbis.py"]
+    },
+    "json": {
+      "libraries": ["bblanchon/ArduinoJson@7.4.2"]
+    }
+  },
+  "modules": [
+    {
+      "id": "voice-recorder",
+      "name": "Voice recorder",
+      "description": "Record microphone audio to WAV on the SD card, with pause and preview controls.",
+      "version": "0.2.0",
+      "kind": "native",
+      "flags": ["-DUNIFIED_VOICE_RECORDER=1"]
+    },
+    {
+      "id": "bluetooth-usb-keyboard",
+      "name": "Bluetooth and USB keyboard",
+      "description": "Use the Cardputer as a keyboard or mouse over Bluetooth or USB.",
+      "version": "0.2.0",
+      "kind": "native",
+      "flags": ["-DUNIFIED_KEYBOARD_APP=1"]
+    },
+    {
+      "id": "playpalace",
+      "name": "PlayPalace",
+      "description": "Play online games with offline speech and optional sound effects.",
+      "version": "0.2.0",
+      "kind": "native",
+      "requires": ["vorbis-codec", "json"],
+      "sources": ["playpalace.cpp", "playpalace_sound.cpp"],
+      "flags": ["-DUNIFIED_PLAYPALACE=1"],
+      "libraries": ["links2004/WebSockets@2.7.1", "NetworkClientSecure"]
+    },
+    {
+      "id": "nvda-remote",
+      "name": "NVDA Remote",
+      "description": "Control a remote NVDA session over Wi-Fi and hear its speech on the Cardputer.",
+      "version": "0.2.0",
+      "kind": "native",
+      "requires": ["json"],
+      "sources": ["nvda_remote.cpp", "nvda_tls.cpp"],
+      "flags": ["-DUNIFIED_NVDA_REMOTE=1"],
+      "libraries": ["https://github.com/arduino-libraries/ArduinoBearSSL.git#c2655703a0c0daafa5d476337b493208fb78fd8d"]
+    },
+    {
+      "id": "voice-changer",
+      "name": "Voice changer",
+      "description": "Record and replay short clips with effects or monitor through headphones.",
+      "version": "0.2.0",
+      "kind": "native",
+      "sources": [],
+      "flags": ["-DUNIFIED_VOICE_CHANGER=1"],
+      "libraries": []
+    },
+    {
+      "id": "bible",
+      "name": "Bible reader",
+      "description": "Navigate offline MP3 Bible chapters and save a listening position.",
+      "version": "0.2.0",
+      "kind": "native",
+      "requires": ["file-audio-pipeline", "mp3-codec"],
+      "sources": [],
+      "flags": ["-DUNIFIED_BIBLE_APP=1", "-DUNIFIED_BIBLE_TEMPO=1"],
+      "libraries": []
+    },
+    {
+      "id": "synthesizer",
+      "name": "Synthesizer",
+      "description": "Play instruments and backing loops from the Cardputer keyboard.",
+      "version": "0.2.0",
+      "kind": "native",
+      "sources": ["synth.cpp"],
+      "flags": ["-DUNIFIED_SYNTH_APP=1"],
+      "libraries": []
+    },
+    {
+      "id": "sd-sharing",
+      "name": "USB and Wi-Fi SD sharing",
+      "description": "Browse and transfer files on the Cardputer SD card from a computer.",
+      "version": "0.2.0",
+      "kind": "native",
+      "sources": ["usb_file_server.cpp"],
+      "flags": ["-DUNIFIED_SD_SHARING=1", "-DUNIFIED_WIFI_SD=1"],
+      "libraries": []
+    },
+    {
+      "id": "compressed-playback",
+      "name": "MP3 and Ogg file playback",
+      "description": "Add MP3 and Ogg Vorbis playback to File Manager.",
+      "version": "0.2.0",
+      "kind": "native",
+      "requires": ["file-audio-pipeline", "mp3-codec", "vorbis-codec"],
+      "flags": ["-DUNIFIED_COMPRESSED_FILES=1"]
+    },
+    {
+      "id": "controls-guide",
+      "name": "Cardputer keyboard and speech guide",
+      "description": "An offline reference for keys, speech controls, and apps.",
+      "version": "0.2.0",
+      "kind": "sd",
+      "source": "research/offline-reader/UNIFIED_CONTROLS.md",
+      "filename": "Controls.txt"
+    }
+  ]
+}

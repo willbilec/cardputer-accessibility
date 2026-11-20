@@ -25,8 +25,10 @@ class BackgroundPrepareTest(unittest.TestCase):
         speech = (directory/'src/BackgroundAudioSpeech.h').read_text(encoding='utf-8')
         api = (directory/'src/libespeak-ng/speech.c').read_text(encoding='utf-8')
         phonemes = (directory/'src/libespeak-ng/phoneme.h').read_text(encoding='utf-8')
-        self.assertIn('framelen = 883', speech)
-        self.assertIn('min_buffer_length = 40', api)
+        frame_ms = 20
+        frame_samples = (22_050 * frame_ms) // 1_000 + 1
+        self.assertIn(f'framelen = {frame_samples}', speech)
+        self.assertIn(f'min_buffer_length = {frame_ms}', api)
         self.assertIn('N_PHONEME_TABS     134', phonemes)
         prepare.prepare()
         self.assertEqual(source.read_bytes(), first)

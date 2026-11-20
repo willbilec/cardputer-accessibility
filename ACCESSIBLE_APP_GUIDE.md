@@ -48,6 +48,10 @@ default speech, repeat buffers and diagnostics. Keep ordinary remote typing sile
 
 ## 3. Add the screen to unified firmware
 
+For new selectable native apps, use the [launcher app interface](research/offline-reader/include/launcher_app.h)
+and [module registration instructions](BUILDING.md#adding-modules-and-releasing).
+The steps below describe older apps that are integrated directly into the launcher.
+
 Open [src/unified.cpp](research/offline-reader/src/unified.cpp) in your editor.
 Keyboard learning is the smallest existing Home-to-app example.
 
@@ -70,29 +74,23 @@ Keyboard learning is the smallest existing Home-to-app example.
 
 ## 4. Build and check from PowerShell
 
-Run these checks from the workspace root using the project's Python and
-PlatformIO setup. Use the corresponding build target for standalone firmware.
-The dependency preparation uses the local pinned BackgroundAudio checkout.
+Run the [current build and host-test commands](BUILDING.md). Build the
+new app by itself and in the full image to verify module selection,
+shared dependencies, and the installer bundle.
 
 ```powershell
-Set-Location research/offline-reader
-python prepare_background.py
-python run_host_tests.py
-python -m platformio run -e unified -j 6
+python builder/build.py workspace/builds/full --preset all --check-codecs
 ```
 
-Read the test summary and build result in your terminal. Run one PlatformIO
-build at a time in this directory. The standalone image is
-`.pio/build/unified/firmware.bin` under `research/offline-reader`. The
-`unified-dev` environment adds USB diagnostic commands. Host tests cover
-logic and fakes. A new screen still needs its own keyboard walkthrough.
+Host tests cover logic and fakes. A new screen also needs its own
+keyboard walkthrough.
 
 ## 5. Verify by listening on the device
 
 Building does not install an image. Before an authorized install, verify the
-actual device, image size, partition table, backups and recovery route. The
-tested unit uses the existing 2.5 MiB application slot at `0x10000`.
-See the [installation and recovery guidance](FUTURE_FIRMWARE_GUIDE.md#installation-and-recovery).
+actual device, image size, partition table, and recovery route. The current
+builder targets a 7.875 MiB application partition at `0x10000`.
+See [flashing and recovery](FLASHING.md).
 
 On the ADV, start at power-on and complete the entire app route without using
 the display. Check re-entry, rapid key presses, Stop, Repeat, Help, cancellation,

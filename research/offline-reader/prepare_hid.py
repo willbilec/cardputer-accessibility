@@ -69,9 +69,10 @@ void releaseHidReports(bool usb) {
 }
 '''
  usbh=files['usbHid.h'].replace('#include <M5Cardputer.h>','#include "headless_board.h"')
- (output/'bluetooth_generated_api.h').write_text(bleh,encoding='utf-8')
- (output/'usb_generated_api.h').write_text(usbh,encoding='utf-8')
- (output/'usb_transport_generated.h').write_text(usb,encoding='utf-8')
- (output/'bluetooth_transport_generated.h').write_text(ble,encoding='utf-8')
- (output/'hid_transport_generated.h').write_text(ble+'\n'+usb,encoding='utf-8')
+ for name, contents in (('bluetooth_generated_api.h',bleh),('usb_generated_api.h',usbh),
+                        ('usb_transport_generated.h',usb),('bluetooth_transport_generated.h',ble),
+                        ('hid_transport_generated.h',ble+'\n'+usb)):
+  path=output/name
+  if not path.is_file() or path.read_text(encoding='utf-8')!=contents:
+   path.write_text(contents,encoding='utf-8')
 if __name__=='__main__':prepare()

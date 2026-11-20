@@ -1,6 +1,8 @@
 __pycache__/
 .pio/
 .venv/
+/workspace/
+/archived/
 *.log
 /release-files/
 /research/arduino-audio-tools/

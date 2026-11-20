@@ -990,13 +990,17 @@ void close() {
     active = {};
     std::vector<Account>().swap(accounts);
     std::vector<MenuItem>().swap(items);
+    std::vector<MenuItem>().swap(tutorialActions);
+    std::vector<int>().swap(rows);
     history.clear();
     announcements.clear();
     menuSpeech = "";
-    muted.clear();
+    std::vector<String>().swap(muted);
     entry = chat = inputId = menuId = historyBuffer = "";
     recoveringTable = atTable = false;
 }
+
+bool busy(){return appOpen||connection||sound::busy();}
 
 void tick(bool speechBusy) {
     const bool overflow = connection && connection->overflow;
@@ -1367,6 +1371,7 @@ void key(const Key& key, bool repeated) {
     }
 }
 
+#ifdef UNIFIED_DIAGNOSTICS
 void status() {
     Serial.printf("PP s=%u w=%d h=%u l=%u t=%s i=%d/%u\n", unsigned(screen), int(WiFi.status()),
                   ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_8BIT), trace,
@@ -1379,6 +1384,7 @@ void memoryStatus() {
                   connection ? connection->stackFree.load() : 0, mediaVolume, effectVolume,
                   connection ? unsigned(connection->largestFrame.load()) : 0);
 }
+#endif
 
 void adjustEffectVolume(int delta) {
     if (!appOpen || !storage) return;

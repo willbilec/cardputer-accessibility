@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include "keyboard_map.h"
 
 bool startUnifiedUSB();
 bool unifiedUSBConnected();
@@ -10,4 +11,5 @@ enum class KeyboardStartup { Ready, InsufficientMemory, Controller, Services, Ad
 KeyboardStartup startKeyboardSlot(int slot, const String &peer, bool pair, const String (&otherPeers)[2]);
 void stopKeyboardSlot();
 bool pollKeyboardSlot(String &pairedPeer);
-void sendUnifiedHid(bool usb, bool mouse, bool release = false);
+bool sendUnifiedHid(bool usb, bool mouse, const keyboardMap::Map &map, bool alternate,
+                    bool release = false, bool optionTap = false);
