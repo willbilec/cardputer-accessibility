@@ -83,9 +83,10 @@ jobs:
           path: release-assets
       - run: |
           cp FLASHING.md LICENSE release-build/
+          cp -R research/offline-reader/licenses release-build/
           cd release-build
           sha256sum bootloader.bin partitions.bin boot_app0.bin firmware.bin > SHA256SUMS
-          zip ../release-assets/cardputer-adv-full-firmware.zip *.bin build.json SHA256SUMS FLASHING.md LICENSE
+          zip -r ../release-assets/cardputer-adv-full-firmware.zip *.bin build.json SHA256SUMS FLASHING.md LICENSE licenses
       - run: gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
