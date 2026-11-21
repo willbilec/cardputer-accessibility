@@ -11,6 +11,9 @@ from catalog import GITHUB_API, RELEASE_BASE, describe_asset, fetch_asset, reque
 RUNTIME_ABI = 1
 PROGRAM_FILES = ("app.py", "build.py", "catalog.py", "flash.py", "progress.py",
                  "program_update.py", "source_files.py")
+PROGRAM_ASSETS = tuple(
+    "help/" + path.name for path in sorted(Path(__file__).with_name("help").iterdir()) if path.is_file()
+)
 
 
 def check_update():
@@ -50,7 +53,7 @@ def install_update(update, state=STATE):
         candidate.mkdir()
         with ZipFile(archive) as package:
             names = [entry.filename for entry in package.infolist()]
-            if sorted(names) != sorted((*PROGRAM_FILES, "program.json")):
+            if sorted(names) != sorted((*PROGRAM_FILES, *PROGRAM_ASSETS, "program.json")):
                 raise ValueError("Unexpected files in the program update.")
             if sum(entry.file_size for entry in package.infolist()) > 4 * 1024**2:
                 raise ValueError("Program update exceeds its extraction limit.")
@@ -64,7 +67,7 @@ def install_update(update, state=STATE):
         if not destination.exists():
             candidate.rename(destination)
         else:
-            for filename in (*PROGRAM_FILES, "program.json"):
+            for filename in (*PROGRAM_FILES, *PROGRAM_ASSETS, "program.json"):
                 if (destination / filename).read_bytes() != (candidate / filename).read_bytes():
                     raise ValueError("An installed copy of this program version differs.")
         pointer = Path(staging) / "program-update.json"
@@ -76,7 +79,7 @@ def write_update_assets(root, tag, output):
     info = {"version": tag.removeprefix("v"), "runtime_abi": RUNTIME_ABI}
     archive = output / "builder-update.zip"
     with ZipFile(archive, "w", compression=ZIP_DEFLATED) as package:
-        for name in PROGRAM_FILES:
+        for name in (*PROGRAM_FILES, *PROGRAM_ASSETS):
             package.write(root / "builder" / name, name)
         package.writestr("program.json", json.dumps(info))
     metadata = dict(info, tag=tag, asset=describe_asset(archive))

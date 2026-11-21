@@ -1,0 +1,7 @@
+File Manager
+
+Choose File Manager from Home to browse the SD card. Enter opens a folder or
+opens a file. WAV files play with the built-in player; MP3 and Ogg files need
+the optional compressed playback module. Backspace goes to the parent folder.
+Use the file actions key to rename, delete, copy, paste, create folders, or
+refresh. Text files can be read one line at a time with Enter or period.

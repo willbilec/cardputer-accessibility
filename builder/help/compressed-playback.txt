@@ -1,0 +1,6 @@
+MP3 and Ogg playback
+
+This option adds MP3 and Ogg Vorbis playback to File Manager. Open an audio file
+with Enter. Space pauses, semicolon and period change media volume, and
+Backspace returns to the file list. WAV playback is available without this
+optional module.

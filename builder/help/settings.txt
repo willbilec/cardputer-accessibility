@@ -1,0 +1,7 @@
+Settings
+
+Settings contains Wi-Fi, date and time, audio levels, microphone gain, storage
+space, and Key Map Manager. Use semicolon and period to move through choices;
+Enter opens or applies a choice. Backspace returns to the previous menu.
+Option+H reads the current controls. Settings are saved on the SD card and
+mirrored in internal flash.

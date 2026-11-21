@@ -263,6 +263,9 @@ def prepare_release(tag, output):
         entry = {key: module[key] for key in ("id", "name", "version", "kind")}
         entry["description"] = module.get("description", "")
         entry["introduced"] = module.get("introduced", module["version"])
+        for key in ("requires_setup", "setup_guide", "help"):
+            if key in module:
+                entry[key] = module[key]
         if module.get("requires"):
             entry["requires"] = module["requires"]
         if module["kind"] == "sd":

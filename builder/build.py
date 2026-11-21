@@ -128,7 +128,7 @@ def resolve_components(components, modules):
     return selected
 
 
-def generate(project, catalog, selected, screen=False):
+def generate(project, catalog, selected, screen=False, include_help=False):
     modules = {module["id"]: module for module in catalog["modules"] if module["kind"] == "native"}
     unknown = set(selected) - modules.keys()
     if unknown:
@@ -138,7 +138,13 @@ def generate(project, catalog, selected, screen=False):
         "launcher": catalog["launcher"],
         "modules": {module["id"]: module["version"] for module in active},
     }
+    if include_help:
+        identity["include_help"] = True
     components = resolve_components(catalog["components"], active)
+    if include_help:
+        flags = ["-DUNIFIED_HELP_MENU=1"]
+    else:
+        flags = []
     config = ConfigParser(interpolation=None)
     config.read(project / "platformio.ini", encoding="utf-8")
     config["platformio"]["core_dir"] = str(Path(os.environ.get(
@@ -146,7 +152,7 @@ def generate(project, catalog, selected, screen=False):
     config["platformio"]["libdeps_dir"] = str(project / ".pio/builder-libdeps")
     config["platformio"]["build_dir"] = str(object_directory(project))
     sources = ["+<unified.cpp>", "+<headless_board.cpp>", "+<unified_hid.cpp>"]
-    flags = [
+    flags = [*flags,
         "${env:backgroundaudio-minimal.build_flags}", "-Os", "-DARDUINO_USB_MODE=0",
         "-DUNIFIED_RESERVED_PHONEMES=1", "-I generated", "-DUNIFIED_CUSTOM_BUILD=1",
         '-I "${platformio.core_dir}/packages/framework-arduinoespressif32/libraries/WiFi/src"',
@@ -216,17 +222,20 @@ def verify_linked_codecs(artifacts, core, components):
         print(f"{component}: {'linked' if linked else 'omitted'}", flush=True)
 
 
-def build(root, selected, destination, run=subprocess.check_call, fetch=True, check_codecs=False, screen=False):
+def build(root, selected, destination, run=subprocess.check_call, fetch=True, check_codecs=False,
+          screen=False, include_help=False):
     root = root.resolve()
     destination = destination.resolve()
     catalog = load_modules(root)
     project = root / "research/offline-reader"
     with project_lock(project):
-        return build_locked(root, project, catalog, selected, destination, run, fetch, check_codecs, screen)
+        return build_locked(root, project, catalog, selected, destination, run, fetch, check_codecs,
+                            screen, include_help)
 
 
-def build_locked(root, project, catalog, selected, destination, run, fetch, check_codecs, screen=False):
-    config, identity, core = generate(project, catalog, selected, screen)
+def build_locked(root, project, catalog, selected, destination, run, fetch, check_codecs, screen=False,
+                 include_help=False):
+    config, identity, core = generate(project, catalog, selected, screen, include_help)
     if fetch:
         dependencies = [str(PYTHON), "-u", str(root / "fetch_dependencies.py"), "--firmware"]
         if "bluetooth-usb-keyboard" in selected:
@@ -253,7 +262,27 @@ def build_locked(root, project, catalog, selected, destination, run, fetch, chec
     destination.mkdir(parents=True, exist_ok=False)
     for name, source in files.items():
         shutil.copyfile(source, destination / name)
+    if include_help:
+        help_modules = [module for module in catalog["modules"]
+                        if module["id"] in selected and module.get("help")]
+        help_dir = destination / "sdcard" / "Help"
+        help_dir.mkdir(parents=True)
+        filenames = ["file-manager.txt", "settings.txt"]
+        filenames.extend(module["help"] for module in help_modules)
+        for filename in dict.fromkeys(filenames):
+            if not re.fullmatch(r"[A-Za-z0-9_-]+\.txt", filename):
+                raise ValueError(f"Invalid help filename: {filename}")
+            source = root / "builder" / "help" / filename
+            if not source.is_file():
+                raise ValueError(f"Missing help document: {source}")
+            shutil.copyfile(source, help_dir / filename)
+        identity["help_documents"] = list(dict.fromkeys(filenames))
     identity["sha256"] = {name: digest(destination / name) for name in files}
+    if include_help:
+        identity["sha256"].update({
+            path.relative_to(destination).as_posix(): digest(path)
+            for path in (destination / "sdcard" / "Help").glob("*.txt")
+        })
     (destination / "build.json").write_text(json.dumps(identity, indent=2), encoding="utf-8")
     return identity
 
@@ -266,6 +295,10 @@ if __name__ == "__main__":
     parser.add_argument("--skip-fetch", action="store_true")
     parser.add_argument("--check-codecs", action="store_true", help="Check codec presence in linked firmware")
     parser.add_argument("--screen", action="store_true", help="Keep the LCD on and show spoken text")
+    parser.add_argument("--include-help", action="store_true",
+                        help="Package help text for the selected apps under output/sdcard/Help")
+    parser.add_argument("--keyboard-learning", action="store_true",
+                        help="Include the Keyboard learning program in the Help menu")
     args = parser.parse_args()
     selected = args.modules
     if args.preset and selected:
@@ -274,4 +307,8 @@ if __name__ == "__main__":
         selected = [item["id"] for item in load_modules(ROOT)["modules"] if item["kind"] == "native"]
     elif args.preset and args.preset != "core":
         selected = [args.preset]
-    build(ROOT, selected, args.output, fetch=not args.skip_fetch, check_codecs=args.check_codecs, screen=args.screen)
+    if args.keyboard_learning:
+        selected.append("key-learning")
+    selected = list(dict.fromkeys(selected))
+    build(ROOT, selected, args.output, fetch=not args.skip_fetch, check_codecs=args.check_codecs,
+          screen=args.screen, include_help=args.include_help)

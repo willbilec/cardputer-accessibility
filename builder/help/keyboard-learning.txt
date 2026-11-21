@@ -1,0 +1,5 @@
+Keyboard learning
+
+This safe practice screen tells you the name and purpose of a key. Press any
+key to hear it described. Keys are not sent to a computer. Tap Alt to change
+the regular or alternate keyboard layer. Alt+Q returns to Home.

@@ -28,15 +28,22 @@ the focused app. Each row shows the name, inclusion status, description and
 version. Voice Recorder and the Bluetooth/USB keyboard can each be omitted.
 The Tools menu contains catalog refresh, USB refresh, builder and firmware
 updates, partition installation, saved-build recovery and SD updates. The
-default selection includes all selectable apps. Clear every check box to build
-the base launcher, which includes settings, keyboard learning, file browsing,
-and TXT and WAV playback. The first build downloads pinned audio sources.
+app list selects all available apps by default. Keyboard learning is an
+optional item in the expandable **Help options** group; it appears in the
+firmware Help menu when selected. The group can also package help text for
+selected apps. Clear the app check boxes and Help options to omit both.
+The first build downloads pinned audio sources.
 Check **Include LCD display** to build the visual interface and backlight
 settings. The check box is off by default. Screen-off builds omit the display
 driver, menus, icons, and fonts. For command-line builds, pass `--screen`.
 When the Bluetooth/USB keyboard module is selected, its source downloads in
 parallel with the audio sources. PlatformIO
-then installs its toolchain and any libraries for the selected apps.
+then installs its toolchain and any libraries for the selected apps. When help
+text is selected, the build writes it to `sdcard/Help` in the output folder and
+offers to copy it to a mounted microSD card. The on-device Help menu lists those
+`.txt` files. `builder/help` contains detailed Bible setup instructions and Old
+Testament sorting scripts (`bible-setup.html`, `sort_nlt_bible.ps1`, and
+`sort_nlt_bible.sh`).
 The status bar shows the current download percentage. The activity log keeps
 completed transfers and build phases. The builder
 chooses a job count from available logical CPUs and free RAM. The program's
@@ -91,6 +98,12 @@ and document the keyboard operation as described in the
 before app key-down events. Supply both open and key callbacks. Return false
 from open to return to Home after cleanup. Tick and close are optional.
 
+Add a short `builder/help/<name>.txt` file and set the module's `help` field to
+make it available for optional on-card help. For apps that need user-provided
+files or another setup step, set `requires_setup: true` and `setup_guide` to a
+guide path such as `builder/help/bible-setup.html`; the builder labels the app
+as requiring extra setup and shows that guide path.
+
 An SD entry lists a source data file and its name on the card. Increase the
 changed component's version when preparing a release. A release pins a
 compatible launcher and collection of apps together. After review, a
@@ -131,6 +144,12 @@ Choose a new output folder for each build. The output includes the four
 matching flash binaries and `build.json` with versions and checksums.
 Use `--preset core` for the base launcher or specify individual app IDs,
 for example `python builder/build.py workspace/builds/online playpalace nvda-remote`.
+Add `--keyboard-learning` to include Keyboard learning in Help and `--include-help`
+to package help text for selected apps into `sdcard/Help`:
+
+```sh
+python builder/build.py workspace/builds/accessible bible --keyboard-learning --include-help
+```
 Direct PlatformIO targets describe historical configurations.
 
 The preparation scripts adapt pinned copies of BackgroundAudio and the geo-tp HID project during the build. The [dependency manifest](research/dependencies.json) lists the upstream URLs and revisions.

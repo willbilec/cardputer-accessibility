@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "launcher": "0.2.2",
+  "launcher": "0.2.3",
   "supports_screen": true,
   "components": {
     "media-decoder": {
@@ -32,12 +32,22 @@
   },
   "modules": [
     {
+      "id": "key-learning",
+      "name": "Keyboard learning",
+      "description": "Learn the Cardputer keys by hearing their names and functions.",
+      "version": "0.2.0",
+      "kind": "native",
+      "flags": ["-DUNIFIED_KEY_LEARNING=1", "-DUNIFIED_HELP_MENU=1"],
+      "help": "keyboard-learning.txt"
+    },
+    {
       "id": "voice-recorder",
       "name": "Voice recorder",
       "description": "Record microphone audio to WAV on the SD card, with pause and preview controls.",
       "version": "0.2.0",
       "kind": "native",
-      "flags": ["-DUNIFIED_VOICE_RECORDER=1"]
+      "flags": ["-DUNIFIED_VOICE_RECORDER=1"],
+      "help": "voice-recorder.txt"
     },
     {
       "id": "bluetooth-usb-keyboard",
@@ -46,7 +56,8 @@
       "version": "0.2.1",
       "introduced": "0.2.0",
       "kind": "native",
-      "flags": ["-DUNIFIED_KEYBOARD_APP=1"]
+      "flags": ["-DUNIFIED_KEYBOARD_APP=1"],
+      "help": "bluetooth-usb-keyboard.txt"
     },
     {
       "id": "playpalace",
@@ -58,6 +69,7 @@
       "requires": ["vorbis-codec", "json"],
       "sources": ["playpalace.cpp", "playpalace_sound.cpp"],
       "flags": ["-DUNIFIED_PLAYPALACE=1"],
+      "help": "playpalace.txt",
       "libraries": ["links2004/WebSockets@2.7.1", "NetworkClientSecure"]
     },
     {
@@ -70,6 +82,7 @@
       "requires": ["json"],
       "sources": ["nvda_remote.cpp", "nvda_tls.cpp"],
       "flags": ["-DUNIFIED_NVDA_REMOTE=1"],
+      "help": "nvda-remote.txt",
       "libraries": ["https://github.com/arduino-libraries/ArduinoBearSSL.git#c2655703a0c0daafa5d476337b493208fb78fd8d"]
     },
     {
@@ -81,6 +94,7 @@
       "kind": "native",
       "sources": [],
       "flags": ["-DUNIFIED_VOICE_CHANGER=1"],
+      "help": "voice-changer.txt",
       "libraries": []
     },
     {
@@ -93,6 +107,9 @@
       "requires": ["file-audio-pipeline", "mp3-codec"],
       "sources": [],
       "flags": ["-DUNIFIED_BIBLE_APP=1", "-DUNIFIED_BIBLE_TEMPO=1"],
+      "requires_setup": true,
+      "setup_guide": "builder/help/bible-setup.html",
+      "help": "bible.txt",
       "libraries": []
     },
     {
@@ -104,6 +121,7 @@
       "kind": "native",
       "sources": ["synth.cpp"],
       "flags": ["-DUNIFIED_SYNTH_APP=1"],
+      "help": "synthesizer.txt",
       "libraries": []
     },
     {
@@ -114,6 +132,7 @@
       "kind": "native",
       "sources": ["usb_file_server.cpp"],
       "flags": ["-DUNIFIED_SD_SHARING=1", "-DUNIFIED_WIFI_SD=1"],
+      "help": "sd-sharing.txt",
       "libraries": []
     },
     {
@@ -123,7 +142,8 @@
       "version": "0.2.0",
       "kind": "native",
       "requires": ["file-audio-pipeline", "mp3-codec", "vorbis-codec"],
-      "flags": ["-DUNIFIED_COMPRESSED_FILES=1"]
+      "flags": ["-DUNIFIED_COMPRESSED_FILES=1"],
+      "help": "compressed-playback.txt"
     },
     {
       "id": "controls-guide",

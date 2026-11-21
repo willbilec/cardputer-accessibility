@@ -45,7 +45,6 @@ extern "C" void cardputer_sonic_discard(sonicStream stream);
 #include <vector>
 #include <algorithm>
 #include "headless_board.h"
-#include "key_learning.h"
 #include "global_shortcuts.h"
 #include "recording_gain.h"
 #include "unified_hid.h"
@@ -65,6 +64,15 @@ extern "C" void cardputer_sonic_discard(sonicStream stream);
 #endif
 #if !defined(UNIFIED_CUSTOM_BUILD) || defined(UNIFIED_SD_SHARING)
 #define CARDPUTER_SD_SHARING
+#endif
+#if !defined(UNIFIED_CUSTOM_BUILD) || defined(UNIFIED_KEY_LEARNING)
+#define CARDPUTER_KEY_LEARNING
+#endif
+#ifdef CARDPUTER_KEY_LEARNING
+#include "key_learning.h"
+#endif
+#if !defined(UNIFIED_CUSTOM_BUILD) || defined(UNIFIED_HELP_MENU)
+#define CARDPUTER_HELP_MENU
 #endif
 #if !defined(UNIFIED_CUSTOM_BUILD) || defined(UNIFIED_COMPRESSED_MEDIA)
 #define CARDPUTER_COMPRESSED_MEDIA
@@ -377,7 +385,14 @@ size_t playPalaceAudio(unsigned rate,const uint8_t* pcm,size_t bytes){
 }
 #endif
 SettingsStore settings(card);
-enum class Page { Home, Learn, Record, Files, FileActions, FileName, ConfirmDelete, Copying, Play, Settings, WifiScan, WifiList, Password, TimeZone, ManualTime, TimePicker, SpeechRate, SpeechVolume, MicGain, MediaVolume, Hid, UsbSDMode, UsbSD, PlayPalace, SettingsCategories, Synth, KeyMap, NvdaRemote, Text, VoiceChanger, Bible, RegisteredApp
+enum class Page { Home
+#ifdef CARDPUTER_KEY_LEARNING
+ ,Learn
+#endif
+ ,Record, Files, FileActions, FileName, ConfirmDelete, Copying, Play, Settings, WifiScan, WifiList, Password, TimeZone, ManualTime, TimePicker, SpeechRate, SpeechVolume, MicGain, MediaVolume, Hid, UsbSDMode, UsbSD, PlayPalace, SettingsCategories, Synth, KeyMap, NvdaRemote, Text, VoiceChanger, Bible, RegisteredApp
+#ifdef CARDPUTER_HELP_MENU
+ ,Help
+#endif
 #ifdef UNIFIED_SCREEN
  ,BacklightTimeout
 #endif
@@ -386,6 +401,10 @@ Page page=Page::Home;
 bool ready=false,speechLoaded=false,sdReady=false,speaking=false,playing=false,paused=false;
 File textFile;
 String textChunk;
+Page textReturnPage=Page::Files;
+#ifdef CARDPUTER_KEY_LEARNING
+bool learningFromHelp=false;
+#endif
 size_t textStart=0,textHistory[64],textHistoryCount=0;
 bool lastSensitive=false;
 bool usbReady=false,hidUsb=false,hidSuppressed=false,hidMouse=false,lastConnected=false;
@@ -459,6 +478,9 @@ uint32_t wavDataStart=0,wavDataSize=0;
 bool wavSeekable=false;
 struct Entry { String name; bool dir; };
 std::vector<Entry> entries;
+#ifdef CARDPUTER_HELP_MENU
+std::vector<Entry> helpDocuments;
+#endif
 std::vector<String> networks;
 #if !defined(UNIFIED_CUSTOM_BUILD) || defined(UNIFIED_VOICE_RECORDER)
 #define CARDPUTER_VOICE_RECORDER
@@ -466,11 +488,11 @@ std::vector<String> networks;
 #if !defined(UNIFIED_CUSTOM_BUILD) || defined(UNIFIED_KEYBOARD_APP)
 #define CARDPUTER_KEYBOARD_APP
 #endif
-const char *home[]={"Keyboard learning"
+const char *home[]={
 #ifdef CARDPUTER_VOICE_RECORDER
- ,"Voice recorder"
+ "Voice recorder",
 #endif
- ,"File manager"
+ "File manager"
 #ifdef CARDPUTER_KEYBOARD_APP
  ,"Bluetooth and USB keyboard"
 #endif
@@ -493,6 +515,9 @@ const char *home[]={"Keyboard learning"
 #ifdef CARDPUTER_BIBLE_APP
  ,"Bible"
 #endif
+#ifdef CARDPUTER_HELP_MENU
+ ,"Help"
+#endif
 #ifdef UNIFIED_CUSTOM_BUILD
 #define UNIFIED_ADD_APP(entry, label) ,label
 #include "builder_apps.inc"
@@ -500,19 +525,18 @@ const char *home[]={"Keyboard learning"
 #endif
 };
 constexpr int homeCount=sizeof(home)/sizeof(home[0]);
-constexpr int recorderHomeIndex=1;
-constexpr int filesHomeIndex=1
+constexpr int recorderHomeIndex=0;
+constexpr int filesHomeIndex=0
 #ifdef CARDPUTER_VOICE_RECORDER
 +1
 #endif
 ;
 constexpr int keyboardHomeIndex=filesHomeIndex+1;
+constexpr int settingsHomeIndex=keyboardHomeIndex
 #ifdef CARDPUTER_KEYBOARD_APP
-constexpr int fileAppCount=1;
-#else
-constexpr int fileAppCount=0;
+ +1
 #endif
-constexpr int settingsHomeIndex=keyboardHomeIndex+fileAppCount;
+;
 constexpr int sdSharingHomeIndex=settingsHomeIndex+1;
 constexpr int firstOnlineHomeIndex=sdSharingHomeIndex
 #ifdef CARDPUTER_SD_SHARING
@@ -532,12 +556,22 @@ int registeredSelection=0;
 constexpr int firstRegisteredApp=homeCount;
 #endif
 constexpr int afterSynth=firstRegisteredApp
+#ifdef CARDPUTER_HELP_MENU
+ -1
+#endif
 #ifdef CARDPUTER_BIBLE_APP
 -1
 #endif
 ;
 #ifdef CARDPUTER_BIBLE_APP
-constexpr int bibleHomeIndex=firstRegisteredApp-1;
+constexpr int bibleHomeIndex=firstRegisteredApp-1
+#ifdef CARDPUTER_HELP_MENU
+ -1
+#endif
+;
+#endif
+#ifdef CARDPUTER_HELP_MENU
+constexpr int helpHomeIndex=firstRegisteredApp-1;
 #endif
 #ifdef CARDPUTER_SYNTH_APP
 constexpr int synthHomeIndex=afterSynth-1;
@@ -585,7 +619,9 @@ constexpr struct BacklightChoice { int seconds; const char *label; } backlightCh
 const char *screenTitle(){
  switch(page){
  case Page::Home:return "Home";
+#ifdef CARDPUTER_KEY_LEARNING
  case Page::Learn:return "Keyboard learning";
+#endif
  case Page::Record:return "Voice recorder";
  case Page::Files:case Page::FileName:case Page::Copying:case Page::ConfirmDelete:return "File manager";
  case Page::FileActions:return "File actions";
@@ -608,6 +644,9 @@ const char *screenTitle(){
  case Page::NvdaRemote:return "NVDA Remote";
  case Page::VoiceChanger:return "Voice changer";
  case Page::Bible:return "Bible";
+#ifdef CARDPUTER_HELP_MENU
+  case Page::Help:return "Help";
+#endif
  case Page::BacklightTimeout:return "Backlight timeout";
 #ifdef UNIFIED_CUSTOM_BUILD
  case Page::RegisteredApp:return home[registeredSelection];
@@ -1082,7 +1121,14 @@ int menuCount(){
  case Page::Settings:return categories[category].count;
  case Page::TimeZone:return zoneCount;
  case Page::FileActions:return sizeof(fileActions)/sizeof(fileActions[0]);
- case Page::Files:return int(entries.size()+fileAppCount);
+  case Page::Files:return int(entries.size());
+#ifdef CARDPUTER_HELP_MENU
+  case Page::Help:return int(helpDocuments.size())
+#ifdef CARDPUTER_KEY_LEARNING
+   +1
+#endif
+   ;
+#endif
  case Page::WifiList:return int(networks.size());
 #ifdef UNIFIED_SCREEN
  case Page::BacklightTimeout:return std::size(backlightChoices);
@@ -1111,9 +1157,16 @@ String menuLabel(int index){
  case Page::Settings:return options[categories[category].first+index];
  case Page::TimeZone:return zoneNames[index];
  case Page::FileActions:return fileActions[index];
- case Page::Files:
-  if(index<fileAppCount)return "Bluetooth keyboard and mouse";
-  return entries[index-fileAppCount].name+(entries[index-fileAppCount].dir?"/":"");
+  case Page::Files:
+   return entries[index].name+(entries[index].dir?"/":"");
+#ifdef CARDPUTER_HELP_MENU
+  case Page::Help:
+#ifdef CARDPUTER_KEY_LEARNING
+   if(index==0)return "Keyboard learning";
+   --index;
+#endif
+   return helpDocuments[index].name;
+#endif
  case Page::WifiList:return networks[index];
  case Page::BacklightTimeout:return backlightChoices[index].label;
  default:return "";
@@ -1136,7 +1189,9 @@ void drawMenu(const char *help=nullptr){
 
 const char *appOpeningHelp(Page opened){
  switch(opened){
+#ifdef CARDPUTER_KEY_LEARNING
  case Page::Learn:return "Press any key to identify it   Alt+Q Home";
+#endif
  case Page::Record:return "Enter Record   Space Pause   Ctrl Preview";
  case Page::Hid:return "Alt Layer   Opt+1-4 Slot   Opt+M Mouse";
  case Page::Play:return "Space Pause   ; . Volume   Backspace Files";
@@ -1166,11 +1221,20 @@ void focus(const String &prefix) {
  case Page::Settings:say(String(options[selection])+", "+String(selection-categories[category].first+1)+" of "+String(categories[category].count));break;
  case Page::TimeZone:say(String(zoneNames[selection])+", "+String(selection+1)+" of "+String(zoneCount));break;
  case Page::FileActions:say(String(fileActions[selection])+", "+String(selection+1)+" of 7");break;
- case Page::Files:
-  if(selection<fileAppCount)say(prefix+"Bluetooth keyboard and mouse, application, 1 of "+String(entries.size()+fileAppCount));
-  else if(selection-fileAppCount<int(entries.size())) {auto &e=entries[selection-fileAppCount];say(e.name+(e.dir?", folder, ":", file, ")+String(selection+1)+" of "+String(entries.size()+fileAppCount));}
+  case Page::Files:
+   if(selection<int(entries.size())) {auto &e=entries[selection];say(e.name+(e.dir?", folder, ":", file, ")+String(selection+1)+" of "+String(entries.size()));}
   else say(prefix+"Folder is empty");
   break;
+#ifdef CARDPUTER_HELP_MENU
+  case Page::Help:
+#ifdef CARDPUTER_KEY_LEARNING
+   if(selection==0)say("Keyboard learning, 1 of "+String(menuCount()));
+   else say(helpDocuments[selection-1].name+", "+String(selection+1)+" of "+String(menuCount()));
+#else
+   say(helpDocuments[selection].name+", "+String(selection+1)+" of "+String(menuCount()));
+#endif
+   break;
+#endif
  case Page::WifiList:
   if(networks.empty())say("No networks found");
   else{
@@ -1202,6 +1266,13 @@ void closeHid(){
 void cancelCopy(){if(copyIn)copyIn.close();if(copyOut)copyOut.close();if(!copyDestination.isEmpty())card.remove(copyDestination);copyDestination="";captureBuffer.reset();}
 void homePage(){
  int returnSelection=0;
+ bool returnToHelp=false;
+#ifdef CARDPUTER_HELP_MENU
+ if(page==Page::Help)returnSelection=helpHomeIndex;
+#ifdef CARDPUTER_KEY_LEARNING
+ if(learningFromHelp){returnSelection=0;returnToHelp=true;learningFromHelp=false;}
+#endif
+#endif
 #ifdef UNIFIED_CUSTOM_BUILD
  if(page==Page::RegisteredApp){
   if(activeRegisteredApp->close)activeRegisteredApp->close();
@@ -1218,6 +1289,9 @@ void homePage(){
   stopVoice();voiceClip.reset();voiceLength=voiceCapacity=0;
   returnSelection=voiceHomeIndex;
  }
+#endif
+#ifdef CARDPUTER_KEYBOARD_APP
+ if(page==Page::Hid)returnSelection=keyboardHomeIndex;
 #endif
  if(page==Page::Text){textFile.close();textChunk="";}
  if(page==Page::KeyMap&&keyMapManager.changed()){
@@ -1257,7 +1331,14 @@ void homePage(){
  if(page==Page::Copying)cancelCopy();
  std::vector<Entry>().swap(entries);std::vector<String>().swap(networks);
  confirmRecordingDelete=previewKeyArmed=false;
- password="";page=Page::Home;selection=returnSelection;focus(notice+"Home. ");
+ password="";
+#ifdef CARDPUTER_HELP_MENU
+ page=returnToHelp?Page::Help:Page::Home;
+ selection=returnToHelp?0:returnSelection;
+ focus(notice+(returnToHelp?"Help. ":"Home. "));
+#else
+ page=Page::Home;selection=returnSelection;focus(notice+"Home. ");
+#endif
 }
 #ifdef CARDPUTER_SD_SHARING
 void leaveUsbSD(){
@@ -1345,7 +1426,7 @@ void selectHid(int slot,bool pair){
 #endif
 void loadDirectory(){
  entries.clear();selection=0;
- if(!sdReady){say(fileAppCount?"SD card unavailable. Bluetooth keyboard is available":"SD card unavailable");return;}
+ if(!sdReady){say("SD card unavailable");return;}
  File dir=card.open(directory);if(!dir||!dir.isDirectory()){say("Cannot open folder");return;}
  for(File f=dir.openNextFile();f;f=dir.openNextFile()){
   if(entries.size()>=512){f.close();break;}
@@ -1558,24 +1639,47 @@ bool global(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State&s){
  }
  return true;
 }
-void openSelected(){
-#ifdef CARDPUTER_KEYBOARD_APP
- if(selection==0){
-  page=Page::Hid;hidMouse=false;hidSuppressed=true;lastConnected=false;
-  std::vector<Entry>().swap(entries);
-  std::vector<String>().swap(networks);
-  hidUsb=false;altTapArmed=optionTapArmed=optionTapPending=false;hidReportPending=true;
-  hidSlot=constrain(settings.getInt("hidSlot",1),1,3);
-  loadHidMode(hidSlot);
-  const bool paired=!settings.getString(slotKeys[hidSlot-1]).isEmpty();
-  if(paired)pendingHidSlot=hidSlot;
-  say(String(paired?"Reconnecting Bluetooth slot "+String(hidSlot):String("Bluetooth keyboard"))
-      + (hidMouse?". Mouse mode. ":hidAlternate?". Alternate layer. ":". Regular layer. ")
-      + "Tap Alt to switch layers. Option 1 through 3 selects a slot. Hold the number to pair. Option 4 selects USB. Option M switches mouse mode. Alt Q returns home");
-  return;
+#ifdef CARDPUTER_HELP_MENU
+void scanHelpDocuments(){
+ helpDocuments.clear();
+ File directory=card.open("/Help");
+ if(!directory||!directory.isDirectory())return;
+ for(File entry=directory.openNextFile();entry;entry=directory.openNextFile()){
+  if(entry.isDirectory())continue;
+  String name=bible::basename(entry);String lower=name;lower.toLowerCase();
+  if(lower.endsWith(".txt"))helpDocuments.push_back({name,false});
  }
+ std::sort(helpDocuments.begin(),helpDocuments.end(),[](const Entry&a,const Entry&b){return a.name<b.name;});
+}
+void openHelpDocument(const String &name){
+ const String path=String("/Help/")+name;
+ textFile=card.open(path,FILE_READ);
+ if(!textFile){say("Could not open help document");return;}
+ uint8_t bom[3];
+ const bool utf8Bom=textFile.read(bom,sizeof(bom))==3&&!memcmp(bom,"\xef\xbb\xbf",3);
+ textStart=utf8Bom?3:0;
+ if(!textFile.seek(textStart)){textFile.close();say("Could not read help document");return;}
+ textHistoryCount=0;textChunk="";textReturnPage=Page::Help;page=Page::Text;
+ say(name+". "+(textFile.available()?String(textHelp):String("Empty help document")));
+}
 #endif
- const int fileIndex=selection-fileAppCount;
+#ifdef CARDPUTER_KEYBOARD_APP
+void openKeyboardApp(){
+ page=Page::Hid;hidMouse=false;hidSuppressed=true;lastConnected=false;
+ std::vector<Entry>().swap(entries);
+ std::vector<String>().swap(networks);
+ hidUsb=false;altTapArmed=optionTapArmed=optionTapPending=false;hidReportPending=true;
+ hidSlot=constrain(settings.getInt("hidSlot",1),1,3);
+ loadHidMode(hidSlot);
+ const bool paired=!settings.getString(slotKeys[hidSlot-1]).isEmpty();
+ if(paired)pendingHidSlot=hidSlot;
+ say(String(paired?"Reconnecting Bluetooth slot "+String(hidSlot):String("Bluetooth keyboard"))
+     + (hidMouse?". Mouse mode. ":hidAlternate?". Alternate layer. ":". Regular layer. ")
+     + "Tap Alt to switch layers. Option 1 through 3 selects a slot. Hold the number to pair. Option 4 selects USB. Option M switches mouse mode. Alt Q returns home");
+}
+#endif
+void openSelected(){
+ const int fileIndex=selection;
  if(fileIndex<0||fileIndex>=int(entries.size()))return;
  Entry e=entries[fileIndex];String path=pathFor(e.name);
  if(e.dir){directory=path;loadDirectory();return;}
@@ -1588,6 +1692,7 @@ void openSelected(){
   textStart=utf8Bom?3:0;
   if(!textFile.seek(textStart)){textFile.close();say("Could not read text file");return;}
   textHistoryCount=0;textChunk="";
+  textReturnPage=Page::Files;
   page=Page::Text;
   say(e.name+". "+(textFile.available()?String(textHelp):String("Empty text file. Backspace returns to files.")));
   return;
@@ -2150,14 +2255,20 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
  }
  if((escape||backspace)&&setting>=0){page=Page::Settings;selection=setting;focus();return;}
  if(escape){
-  if(page==Page::Text){textFile.close();textChunk="";page=Page::Files;focus();return;}
+   if(page==Page::Text){textFile.close();textChunk="";
+#ifdef CARDPUTER_HELP_MENU
+    if(textReturnPage==Page::Help){page=Page::Help;focus();return;}
+#endif
+    page=Page::Files;focus();return;}
   if(page==Page::Password){password="";page=Page::WifiList;selection=0;focus();return;}
   if(page==Page::ManualTime||page==Page::TimePicker){timeInput="";bool typed=page==Page::ManualTime;page=Page::Settings;selection=typed?4:5;focus();return;}
   if(page==Page::FileName||page==Page::ConfirmDelete||page==Page::FileActions){page=Page::Files;loadDirectory();return;}
   homePage();return;
  }
  if(backspace&&page==Page::FileActions){page=Page::Files;loadDirectory();return;}
- if(page==Page::Learn){say(keys::describe(e.row,e.col,s.shift,s.fn,s.ctrl,s.alt).c_str());return;}
+#ifdef CARDPUTER_KEY_LEARNING
+  if(page==Page::Learn){say(keys::describe(e.row,e.col,s.shift,s.fn,s.ctrl,s.alt).c_str());return;}
+#endif
  if(page==Page::Password){
   if(e.row==2&&e.col==13){
    pendingSSID=ssid;pendingPassword=password;password="";
@@ -2216,7 +2327,7 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
  }
  if(page==Page::Copying){if(e.row==3&&e.col==13){unsigned percent=copyTotal?unsigned((uint64_t(copyDone)*100)/copyTotal):100;say("Copy "+String(percent)+" percent. Alt Q cancels");}return;}
  if(page==Page::Text){
-  if(backspace){textFile.close();textChunk="";page=Page::Files;focus();return;}
+   if(backspace){textFile.close();textChunk="";page=textReturnPage;focus();return;}
   if(s.fn||s.ctrl||s.alt||s.opt)return;
   const char key=keys::plain[e.row][e.col];
   if(key=='.'||(e.row==2&&e.col==13))readTextSection();
@@ -2314,20 +2425,19 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
  }
  if(page==Page::Files&&e.row==0&&e.col==13){if(directory!="/"){int p=directory.lastIndexOf('/');directory=p<=0?"/":directory.substring(0,p);loadDirectory();}else homePage();return;}
  if(page==Page::Files&&!s.fn&&!s.ctrl&&!s.alt&&!s.opt&&e.row==3&&e.col==9){
-  int index=selection-fileAppCount;
+   int index=selection;
   fileTarget=index>=0&&index<int(entries.size())?pathFor(entries[index].name):"";
   page=Page::FileActions;selection=0;focus();return;
  }
  if(e.row!=2||e.col!=13)return;
  if(page==Page::Home){
   switch(selection){
-  case 0:page=Page::Learn;say("Keyboard learning. Press keys to hear them. Shift is to the right of Function. Alt Q returns home");break;
 #ifdef CARDPUTER_VOICE_RECORDER
   case recorderHomeIndex:page=Page::Record;say("Voice recorder. Enter starts or saves. Space pauses or resumes. Tap Control to start or play back a preview. Backspace asks to delete. Semicolon and period change microphone gain. Alt Q returns home");break;
 #endif
   case filesHomeIndex:page=Page::Files;directory="/";loadDirectory();break;
 #ifdef CARDPUTER_KEYBOARD_APP
-  case keyboardHomeIndex:selection=0;openSelected();break;
+   case keyboardHomeIndex:openKeyboardApp();break;
 #endif
   case settingsHomeIndex:page=Page::SettingsCategories;selection=0;focus("Settings. ");break;
 #ifdef CARDPUTER_SD_SHARING
@@ -2339,9 +2449,27 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
 #endif
    break;
 #endif
+#ifdef CARDPUTER_HELP_MENU
+   case helpHomeIndex:
+    scanHelpDocuments();page=Page::Help;selection=0;
+    if(menuCount())focus("Help. ");else say("Help documents are not on the SD card. Copy the build sdcard Help folder to the SD card's Help folder");
+    break;
+#endif
   }
   return;
  }
+#ifdef CARDPUTER_HELP_MENU
+  if(page==Page::Help){
+#ifdef CARDPUTER_KEY_LEARNING
+   if(selection==0){learningFromHelp=true;page=Page::Learn;say("Keyboard learning. Press keys to hear their names and functions. Keys are not sent to a computer. Alt Q returns to Help");return;}
+   openHelpDocument(helpDocuments[selection-1].name);return;
+#else
+   if(selection>=0&&selection<int(helpDocuments.size()))openHelpDocument(helpDocuments[selection].name);
+   else say("Copy the selected app help files to the SD card Help folder first");
+   return;
+#endif
+  }
+#endif
  if(page==Page::Files){openSelected();return;}
  if(page==Page::FileActions){
   int action=selection;
@@ -2506,7 +2634,7 @@ void setup(){
 #ifdef UNIFIED_DIAGNOSTICS
  startupStage=5;Serial.printf("UF_READY keyboard=%d sd=%d heap=%u reset=%d\n",keyboardInitialized,sdReady,ESP.getFreeHeap(),int(esp_reset_reason()));
 #endif
- say("Cardputer ready. Home. Keyboard learning, 1 of "+String(homeCount));
+ say(String("Cardputer ready. Home. ")+home[0]+", 1 of "+String(homeCount));
 #ifdef UNIFIED_SCREEN
  drawMenu();
 #endif

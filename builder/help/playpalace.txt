@@ -1,0 +1,6 @@
+PlayPalace
+
+Connect Wi-Fi in Settings, then open PlayPalace. Sign in with your server URL,
+username, and password. Use semicolon and period to move, Enter to select, and
+Tab to move between Game, Chat, and History. Option+K reads game controls.
+Alt+Q returns Home. The full guide is Controls.txt in the Cardputer file browser.

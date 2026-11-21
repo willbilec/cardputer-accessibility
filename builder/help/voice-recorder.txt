@@ -1,0 +1,6 @@
+Voice recorder
+
+Choose Voice recorder from Home. Enter starts or saves a recording. Space pauses
+or resumes. Tap Control to make a preview. Backspace asks to delete a recording.
+Semicolon and period change microphone gain. Recordings are stored on the SD
+card in Recordings. Alt+Q returns Home.

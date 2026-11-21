@@ -73,10 +73,12 @@ Global controls:
   timing during a connection and restores the saved boost when you leave.
 - Alt + Q: home. Alt + B: approximate battery. Alt + T: time. Alt + N: network.
 
-Home contains Keyboard learning, Voice recorder, File manager, Bluetooth and USB
-keyboard, Settings, and Browse SD card over USB or Wi-Fi.
-Keyboard learning describes pressed keys without sending them to another
-computer. In Voice recorder, Enter starts recording and Enter again saves it.
+Home contains Voice recorder, File manager, Bluetooth and USB keyboard when
+selected, Settings, and Browse SD card over USB or Wi-Fi when included. The
+optional Help menu contains Keyboard learning and any selected app help files
+copied to the SD card's Help folder. Keyboard learning describes pressed keys
+without sending them to another computer. In Voice recorder, Enter starts
+recording and Enter again saves it.
 Space pauses or resumes recording or preview playback. A high beep signals
 start or resume, and a low beep signals pause or the end of playback.
 Backspace asks to delete the current recording or the most recent recording

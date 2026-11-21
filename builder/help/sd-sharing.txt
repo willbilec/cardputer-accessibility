@@ -1,0 +1,6 @@
+USB and Wi-Fi SD sharing
+
+Choose Browse SD card over USB or Wi-Fi from Home. Period changes the mode;
+Enter starts sharing. USB can be read only or read and write. Wi-Fi read and
+write requires both devices on the same local network. Press Space to repeat
+connection details. Alt+Q stops sharing and returns Home.

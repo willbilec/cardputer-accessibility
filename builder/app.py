@@ -60,6 +60,18 @@ class Builder(wx.Frame):
         self.button(panel, layout, "Select all current apps", self.select_all)
         self.screen = wx.CheckBox(panel, label="Include LCD display")
         layout.Add(self.screen, 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        self.help_pane = wx.CollapsiblePane(panel, label="Help options")
+        help_layout = wx.BoxSizer(wx.VERTICAL)
+        self.key_learning = wx.CheckBox(
+            self.help_pane.GetPane(), label="Include Keyboard learning in the Help menu")
+        self.key_learning.SetName("Include Keyboard learning")
+        self.include_help = wx.CheckBox(
+            self.help_pane.GetPane(), label="Include help text for selected apps")
+        self.include_help.SetName("Include help text for selected apps")
+        help_layout.Add(self.key_learning, 0, wx.ALL, 4)
+        help_layout.Add(self.include_help, 0, wx.ALL, 4)
+        self.help_pane.GetPane().SetSizer(help_layout)
+        layout.Add(self.help_pane, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
         self.button(panel, layout, "Build firmware", lambda _: self.start_build("build"))
 
         layout.Add(wx.StaticText(panel, label="Cardputer USB port"), 0, wx.ALL, 6)
@@ -112,7 +124,11 @@ class Builder(wx.Frame):
         return self.local if self.local and self.source.GetSelection() == 0 else self.catalog
 
     def selected_modules(self):
-        return [item["id"] for index, item in enumerate(self.native) if self.module_selected(index)]
+        selected = [item["id"] for index, item in enumerate(self.visible_native)
+                    if self.module_selected(index)]
+        if self.key_learning.IsEnabled() and self.key_learning.GetValue():
+            selected.append("key-learning")
+        return selected
 
     def update_screen_checkbox(self):
         supported = (self.selected_catalog() or {}).get("supports_screen", False)
@@ -123,14 +139,24 @@ class Builder(wx.Frame):
         catalog = self.selected_catalog()
         self.update_screen_checkbox()
         self.native = [item for item in (catalog or {}).get("modules", []) if item["kind"] == "native"]
+        self.visible_native = [item for item in self.native if item["id"] != "key-learning"]
+        learning_available = any(item["id"] == "key-learning" for item in self.native)
+        self.key_learning.SetValue(learning_available and retain is not None and "key-learning" in retain)
+        self.key_learning.Enable(learning_available and not self.busy)
+        self.include_help.Enable(not self.busy)
         self.modules.DeleteAllItems()
-        for index, item in enumerate(self.native):
+        for index, item in enumerate(self.visible_native):
             self.modules.InsertItem(index, item["name"])
             self.modules.SetItem(index, 1, "No")
-            self.modules.SetItem(index, 2, item.get("description") or "Description unavailable.")
+            description = item.get("description") or "Description unavailable."
+            if item.get("requires_setup"):
+                description = "Requires extra setup. " + description
+                if item.get("setup_guide"):
+                    description += " Setup guide: " + item["setup_guide"]
+            self.modules.SetItem(index, 2, description)
             self.modules.SetItem(index, 3, item["version"])
-            self.set_module(index, retain is None or item["id"] in retain)
-        if self.native:
+            self.set_module(index, (item["id"] != "key-learning") if retain is None else item["id"] in retain)
+        if self.visible_native:
             self.modules.Select(0)
             self.modules.Focus(0)
 
@@ -160,8 +186,9 @@ class Builder(wx.Frame):
             event.Skip()
 
     def select_all(self, _):
-        for index in range(len(self.native)):
+        for index in range(len(self.visible_native)):
             self.set_module(index, True)
+        self.key_learning.SetValue(self.key_learning.IsEnabled())
 
     def change_source(self, _):
         if self.selected_catalog() is None:
@@ -194,7 +221,8 @@ class Builder(wx.Frame):
         focus = wx.Window.FindFocus()
         self.log.SetFocus()
         self.GetMenuBar().EnableTop(0, False)
-        for control in [*self.actions, self.source, self.modules, self.port, self.screen]:
+        for control in [*self.actions, self.source, self.modules, self.port, self.screen,
+                        self.help_pane, self.key_learning, self.include_help]:
             control.Disable()
         self.report(label)
         self.make_status.SetStatusText(label)
@@ -202,9 +230,11 @@ class Builder(wx.Frame):
         def finish(result, error):
             self.busy = False
             self.GetMenuBar().EnableTop(0, True)
-            for control in [*self.actions, self.source, self.modules, self.port]:
+            for control in [*self.actions, self.source, self.modules, self.port, self.help_pane,
+                            self.key_learning, self.include_help]:
                 control.Enable()
             self.update_screen_checkbox()
+            self.key_learning.Enable(any(item["id"] == "key-learning" for item in self.native))
             if focus:
                 focus.SetFocus()
             if error is not None:
@@ -427,8 +457,9 @@ class Builder(wx.Frame):
             if port is None:
                 return
         if selected is None:
-            selected = self.selected_modules()
+                selected = self.selected_modules()
         screen = current.get("supports_screen", False) and self.screen.GetValue()
+        include_help = self.include_help.GetValue()
         catalog = current if current is not self.local else None
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         output = STATE / "builds" / (stamp + "-" + uuid4().hex[:8])
@@ -437,7 +468,7 @@ class Builder(wx.Frame):
             if catalog is not None:
                 wx.CallAfter(self.report, f"Checking the cached firmware source for {catalog['tag']}.")
             root = source_tree(catalog) if catalog is not None else ROOT
-            build(root, selected, output, run=self.command, screen=screen)
+            build(root, selected, output, run=self.command, screen=screen, include_help=include_help)
             if port is not None:
                 wx.CallAfter(self.report, f"USB recovery files: {output}")
                 return self.flash_output(port, output, allow_migration=action == "migrate", backup=backup)
@@ -449,6 +480,18 @@ class Builder(wx.Frame):
             else:
                 description = "Build completed." if action == "build" else "Firmware flashed and launcher verified."
             self.notify(f"{description}\n\nBuild files: {output}")
+            help_dir = output / "sdcard" / "Help"
+            if help_dir.is_dir() and wx.MessageBox(
+                    "Copy the selected app help files to a mounted microSD card now?",
+                    "Copy help files to microSD", wx.YES_NO | wx.NO_DEFAULT, self) == wx.YES:
+                with wx.DirDialog(self, "Choose the mounted Cardputer microSD card",
+                                  style=wx.DD_DIR_MUST_EXIST) as picker:
+                    if picker.ShowModal() == wx.ID_OK:
+                        card_help = Path(picker.GetPath()) / "Help"
+                        card_help.mkdir(parents=True, exist_ok=True)
+                        for source in help_dir.glob("*.txt"):
+                            (card_help / source.name).write_bytes(source.read_bytes())
+                        self.notify(f"Copied {len(list(help_dir.glob('*.txt')))} help files to {card_help}.")
         self.work("Building firmware.", perform, done)
 
     def update_firmware(self, _):
@@ -467,7 +510,7 @@ class Builder(wx.Frame):
                 if wx.MessageBox(f"The device did not report a build version. Install with all current apps and {display}?",
                                  "Older or unidentified firmware", wx.YES_NO | wx.NO_DEFAULT, self) != wx.YES:
                     return
-                selected = [item["id"] for item in self.native]
+                selected = self.selected_modules()
             else:
                 selected = list(installed["modules"])
                 available = {item["id"]: item["version"] for item in self.native}

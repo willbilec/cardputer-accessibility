@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Set up Bible audio for Cardputer ADV</title>
+  <style>
+    body { max-width: 54rem; margin: 2rem auto; padding: 0 1rem; font: 1rem/1.6 system-ui, sans-serif; color: #18212a; }
+    code, pre { background: #f0f3f6; padding: .15rem .35rem; }
+    pre { overflow-wrap: anywhere; padding: 1rem; }
+    h1, h2 { line-height: 1.25; }
+  </style>
+</head>
+<body>
+  <h1>Set up Bible audio for Cardputer ADV</h1>
+  <p>The firmware includes the Bible reader program, but Bible audio is separate and must be copied to the microSD card. The reader looks under <code>/bible</code>, discovers translation folders there, then searches numbered book folders for MP3 chapters.</p>
+  <h2>Download audio</h2>
+  <p>Faith Comes By Hearing offers MP3 Bible downloads at <a href="https://www.faithcomesbyhearing.com/audio-bible-resources/mp3-downloads">faithcomesbyhearing.com/audio-bible-resources/mp3-downloads</a>. The page describes the audio as free and asks for your name and email address before download. Follow the site's terms for the translation you choose.</p>
+  <p>The example used here is the New Living Translation (NLT), English dramatic audio. The Old Testament download in this example contains many MP3 files loose in a folder, named like <code>A01___01_Genesis_______ENGNLTO2DA.mp3</code>. The Cardputer needs those files sorted by book and renamed with a chapter number.</p>
+  <h2>Sort the Old Testament files</h2>
+  <p>Copy the downloaded files to a folder on your computer. The PowerShell script is <code>sort_nlt_bible.ps1</code>; the Linux/macOS shell script is <code>sort_nlt_bible.sh</code>. Both copy the files into the correct book folders and rename them to the pattern the firmware reads.</p>
+  <p>The PowerShell script defaults to the example download and output locations used during development. Review the paths before running it. Preview first, then add <code>-Apply</code> to copy files:</p>
+  <pre>powershell -ExecutionPolicy Bypass -File .\sort_nlt_bible.ps1
+powershell -ExecutionPolicy Bypass -File .\sort_nlt_bible.ps1 -Apply</pre>
+  <p>The shell script previews by default. Pass the input and output folders, then add <code>--apply</code> to write:</p>
+  <pre>bash sort_nlt_bible.sh "/path/to/English_eng_NLT_OT_Drama" "/path/to/NLT Bible"
+bash sort_nlt_bible.sh "/path/to/English_eng_NLT_OT_Drama" "/path/to/NLT Bible" --apply</pre>
+  <h2>Copy to the microSD card</h2>
+  <p>Copy the finished <code>NLT Bible</code> folder to <code>/bible/NLT Bible</code> on the microSD card. A valid example is:</p>
+  <pre>/bible/NLT Bible/01 - Genesis/Faith Comes By Hearing - Genesis 1.mp3
+/bible/NLT Bible/01 - Genesis/Faith Comes By Hearing - Genesis 2.mp3
+/bible/NLT Bible/02 - Exodus/Faith Comes By Hearing - Exodus 1.mp3</pre>
+  <p>Book folder numbers follow the standard Bible order: <code>01 - Genesis</code> through <code>39 - Malachi</code>. Keep every chapter MP3 inside its matching book folder. The translation folder may be named differently, but it must be directly inside <code>/bible</code>.</p>
+  <h2>Use the reader</h2>
+  <p>Build firmware with the Bible reader selected. On the Cardputer, choose Bible from Home, choose <strong>NLT Bible</strong>, then choose a book and chapter. The reader saves the listening position. Its keyboard controls are available with Option+H; see the on-card Bible.txt help file for a short reference.</p>
+</body>
+</html>

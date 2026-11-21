@@ -1,0 +1,6 @@
+Voice changer
+
+Choose an effect with number keys 1 through 0. Enter records; press any key to
+stop and hear the result. Space replays the last recording. M starts or stops
+live monitoring; use headphones to prevent feedback. Option+Backspace stops
+audio. Backspace or Alt+Q returns Home and clears the clip.

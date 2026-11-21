@@ -1,0 +1,6 @@
+Bluetooth and USB keyboard
+
+Choose Bluetooth and USB keyboard from Home. Use Option+1 through Option+3 to
+choose a Bluetooth slot; hold the number to pair. Option+4 selects USB.
+Option+M switches between keyboard and mouse. Tap Alt to switch keyboard layers.
+Typing sent to a computer is silent. Alt+Q returns Home and disconnects.

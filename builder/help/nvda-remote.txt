@@ -1,0 +1,7 @@
+NVDA Remote
+
+Configure a session in NVDA Remote Access on the Windows computer. On the
+Cardputer, choose a saved session, load nvda-remote.ini from the SD card, or
+enter the connection details. The session key stays silent. Enter connects;
+Option+Enter accepts a controlled computer. Fn sends NVDA commands when Caps
+Lock is enabled as an NVDA modifier. Option+K reads controls. Alt+Q returns Home.

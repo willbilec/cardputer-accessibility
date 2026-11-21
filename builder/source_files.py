@@ -10,6 +10,9 @@ def firmware_files(root, manifest, *, sd_data=False):
         Path("LICENSE"), Path("fetch_dependencies.py"), Path("research/dependencies.json"),
         Path("builder/modules.json"),
     }
+    files.update(Path("builder/help") / module["help"]
+                 for module in manifest["modules"] if module.get("help"))
+    files.update(Path("builder/help") / name for name in ("file-manager.txt", "settings.txt"))
     files.update(firmware / name for name in (
         "platformio.ini", "partitions.csv", "partitions-playpalace.csv",
         "prepare.py", "prepare_background.py", "prepare_hid.py",
