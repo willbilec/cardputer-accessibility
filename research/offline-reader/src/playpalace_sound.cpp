@@ -311,7 +311,7 @@ void request(fs::FS& storage, const String& base, const String& name, unsigned v
     next->volume = std::min(100u, volume);
     next->pcm = xStreamBufferCreate(4096, 4);
     if (!next->pcm) return;
-    if (xTaskCreate(worker, "PlayPalace FX", 12288, next.get(), 1, nullptr) != pdPASS) {
+    if (xTaskCreatePinnedToCore(worker, "PlayPalace FX", 12288, next.get(), 1, nullptr, 0) != pdPASS) {
         vStreamBufferDelete(next->pcm);
         return;
     }
@@ -319,6 +319,12 @@ void request(fs::FS& storage, const String& base, const String& name, unsigned v
 #ifdef UNIFIED_DIAGNOSTICS
     ++networkStarts;
 #endif
+}
+
+void localCue(fs::FS& storage, const String& name, unsigned volume) {
+    if (!volume) return;
+    cancel();
+    startBank(storage, name, volume);
 }
 
 void cancel() {

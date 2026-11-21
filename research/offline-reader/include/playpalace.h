@@ -19,9 +19,11 @@ bool busy();
 void tick(bool speechBusy);
 bool canRepeatMenuArrow();
 void key(const Key& key, bool repeated = false);
+void readGameView();
 void status();
 void memoryStatus();
 void adjustEffectVolume(int delta);
 void setMediaVolume(unsigned percent);
 void stopAnnouncements();
+bool readingText();
 }

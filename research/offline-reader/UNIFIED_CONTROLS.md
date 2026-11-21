@@ -329,13 +329,16 @@ It uses the expanded 8 MiB partition layout in `partitions-playpalace.csv`.
   game menu. Backspace also goes back when the menu supports it.
   Hold an arrow to repeat through the game menu. Fn + Alt + an arrow jumps to a grid edge.
   Fn with the number row invokes F-keys. Alt+M focuses Game. Alt+H reads help.
+  Tap Fn by itself to read the game view's information, such as available credits during
+  a Space Base purchase, without moving focus.
 - Type a table message and press Enter to send. Prefix a message with a
   period and a space for global chat. In History, semicolon and comma read
   older lines, period reads newer lines, brackets select buffers, and F4 toggles the selected buffer's
   mute. Ordinary typing speaks key names. PlayPalace passwords stay silent.
   F6 toggles table chat and Shift+F6 toggles global chat.
-- Server speech reads the full packet in order. A newer speech packet can
-  interrupt a score or status read-through. Control (bottom-left) or Option+Space stops speech.
+- History, score, and status read-throughs complete before new server
+  announcements play. Press a key to interrupt a read-through. Control
+  (bottom-left) or Option+Space stops speech.
 - A new game menu takes priority over ordinary focus and chat speech. PlayPalace
   disables Wi-Fi modem sleep while connected for faster replies, which can
   increase battery use during play.
@@ -347,7 +350,8 @@ It uses the expanded 8 MiB partition layout in `partitions-playpalace.csv`.
   and skips network effects when heap is low. The optional
   `/PlayPalace/effects.ppfx` bank plays short IMA ADPCM effects straight from SD
   and works with the smaller connected heap. Menu movement speaks the focused
-  item without an added click. Each new activation or gameplay effect replaces the previous effect.
+  item without an added click. Enter plays its confirmation cue from the SD
+  effects bank when available. New gameplay effects replace previous effects.
 
 ## NVDA Remote
 

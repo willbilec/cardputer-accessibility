@@ -1201,14 +1201,17 @@ bool connectSavedWifi(){
  return true;
 }
 #endif
-void stopSpeech(){
-#ifdef UNIFIED_PLAYPALACE
- if(page==Page::PlayPalace)playpalace::stopAnnouncements();
-#endif
+void flushSpeech(){
  SpeechLock lock;
  if(speechLoaded&&speaking)reader.flush();
  speechLeg.discard();
  speaking=false;
+}
+void stopSpeech(){
+#ifdef UNIFIED_PLAYPALACE
+ if(page==Page::PlayPalace)playpalace::stopAnnouncements();
+#endif
+ flushSpeech();
 }
 bool global(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State&s){
  using namespace globalShortcuts;
@@ -1556,6 +1559,21 @@ void handleSynth(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State 
 }
 #endif
 void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
+#ifdef UNIFIED_PLAYPALACE
+ static bool gameViewTap=false;
+ if(page!=Page::PlayPalace)gameViewTap=false;
+ else if(e.row*14+e.col==keyboardMap::functionKey){
+  if(e.down){
+   gameViewTap=true;
+   for(int key=0;key<keyboardMap::positions;++key)
+    if(key!=keyboardMap::functionKey&&M5Cardputer.Keyboard.keyDown(key/14,key%14))gameViewTap=false;
+  }else{
+   if(gameViewTap)playpalace::readGameView();
+   gameViewTap=false;
+  }
+  return;
+ }else if(e.down)gameViewTap=false;
+#endif
 #ifdef UNIFIED_CUSTOM_BUILD
  if(page==Page::RegisteredApp){
   if(!e.down||!global(e,s))activeRegisteredApp->key(e,s);
@@ -1744,6 +1762,7 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
   const char base=keys::plain[e.row][e.col];
   const char character=s.shift?keys::shifted[e.row][e.col]:base;
   const int function=s.fn&&e.row==0&&e.col>=1&&e.col<=12?e.col:0;
+  if(base>=8&&playpalace::readingText())flushSpeech();
   playpalace::key({base,character,function,s.fn,s.shift,s.ctrl,s.alt});
   return;
  }
@@ -2142,6 +2161,7 @@ void setup(){
  say("Cardputer ready. Home. Keyboard learning, 1 of "+String(homeCount));
 }
 void loop(){
+ static_assert(ARDUINO_RUNNING_CORE == 1, "Keep navigation on the speech mixer core");
  M5Cardputer.Keyboard.update();auto&s=M5Cardputer.Keyboard.keysState();
  if(M5Cardputer.Keyboard.quitRequested()
 #ifdef CARDPUTER_BIBLE_APP

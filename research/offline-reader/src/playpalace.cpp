@@ -1,6 +1,7 @@
 #include "playpalace.h"
 #include "playpalace_grid.h"
 #include "playpalace_sound.h"
+#include "playpalace_speech.h"
 #include "key_learning.h"
 
 #include <ArduinoJson.h>
@@ -159,9 +160,10 @@ void socketTask(void* argument) {
 
 enum class Screen { Home, Saved, Address, Username, Password, Confirm, Connecting, Game, SoundAddress };
 enum class Pane { Game, Chat, History };
-enum class OrderedRead { None, Menu, Text };
+enum class OrderedRead { None, Live, Text };
 struct MenuItem { String text, id; };
-struct Line { String text, buffer; };
+using SpeechText = std::shared_ptr<const String>;
+struct Line { SpeechText text; String buffer; };
 
 fs::FS* storage = nullptr;
 Speak speak = nullptr;
@@ -175,15 +177,15 @@ Account active;
 std::vector<MenuItem> items;
 std::vector<int> rows;
 std::deque<Line> history;
-std::deque<String> announcements;
+PendingSpeech<SpeechText> announcements;
 std::vector<String> muted;
 String menuSpeech;
 wifi_ps_type_t previousWifiPowerSave = WIFI_PS_NONE;
 bool restoreWifiPowerSave = false;
-String orderedText;
+SpeechText orderedText;
 OrderedRead orderedRead = OrderedRead::None;
-size_t orderedLine = 0, orderedOffset = 0;
-bool orderedPrompt = false, orderedFirst = false;
+size_t orderedOffset = 0;
+bool orderedFirst = false;
 String entry, chat, inputId, menuId, prompt, historyBuffer, escapeBehavior;
 String tutorialId, tutorialText, documentId;
 std::vector<MenuItem> tutorialActions;
@@ -216,57 +218,36 @@ void say(const String& message, bool interrupt = true) {
 
 void stopOrderedRead() {
     orderedRead = OrderedRead::None;
-    orderedText = String();
+    orderedText.reset();
 }
 
-void beginOrderedRead(OrderedRead kind) {
-    announcements.clear();
+void beginOrderedRead(OrderedRead kind, SpeechText text) {
     menuSpeech = "";
     orderedRead = kind;
-    orderedLine = orderedOffset = 0;
+    orderedText = std::move(text);
+    orderedOffset = 0;
     orderedFirst = true;
-    orderedPrompt = kind == OrderedRead::Menu && prompt.length();
 }
 
 void readNextPart(bool speechBusy) {
     if (speechBusy && !orderedFirst) return;
-    while (orderedRead != OrderedRead::None) {
-        const bool isText = orderedRead == OrderedRead::Text;
-        if (!isText && !orderedPrompt && orderedLine >= items.size()) {
-            stopOrderedRead();
-            return;
-        }
-        const String& text = isText ? orderedText : orderedPrompt ? prompt : items[orderedLine].text;
-        if (orderedOffset >= text.length() ||
-            (!isText && !orderedPrompt && menuId == "game_over" && items[orderedLine].id != "score_line")) {
-            if (isText) { stopOrderedRead(); return; }
-            if (orderedPrompt) orderedPrompt = false;
-            else ++orderedLine;
-            orderedOffset = 0;
-            continue;
-        }
-        size_t end = std::min(orderedOffset + 720, size_t(text.length()));
-        const int newline = text.indexOf('\n', orderedOffset);
-        if (newline >= 0 && size_t(newline) < end) end = size_t(newline) + 1;
-        else if (end < text.length()) {
-            const int space = text.lastIndexOf(' ', end);
-            if (space >= 0 && size_t(space) > orderedOffset + 360) end = size_t(space) + 1;
-            while (end > orderedOffset && (uint8_t(text[end]) & 0xc0) == 0x80) --end;
-        }
+    const String& text = *orderedText;
+    while (orderedOffset < text.length()) {
+        const size_t end = speechPartEnd({text.c_str(), text.length()}, orderedOffset);
         String part = text.substring(orderedOffset, end);
         orderedOffset = end;
         part.trim();
         if (part.length()) {
-            say(part, orderedFirst);
+            say(part, orderedFirst && orderedRead == OrderedRead::Text);
             orderedFirst = false;
             return;
         }
     }
+    stopOrderedRead();
 }
 
 void readText(String text) {
-    orderedText = std::move(text);
-    beginOrderedRead(OrderedRead::Text);
+    beginOrderedRead(OrderedRead::Text, std::make_shared<String>(std::move(text)));
 }
 
 bool readJson(const char* path, JsonDocument& data) {
@@ -542,8 +523,8 @@ void startSocket() {
     candidate->outgoing = xQueueCreate(6, sizeof(String*));
     candidate->received = xSemaphoreCreateBinary();
     if (!candidate->incoming || !candidate->outgoing || !candidate->received ||
-        xTaskCreate(socketTask, "PlayPalace", candidate->endpoint.secure ? 9216 : 6144,
-                    candidate.get(), 1, &candidate->task) != pdPASS) {
+        xTaskCreatePinnedToCore(socketTask, "PlayPalace", candidate->endpoint.secure ? 9216 : 6144,
+                                candidate.get(), 1, &candidate->task, 0) != pdPASS) {
         if (candidate->incoming) vQueueDelete(candidate->incoming);
         if (candidate->outgoing) vQueueDelete(candidate->outgoing);
         if (candidate->received) vSemaphoreDelete(candidate->received);
@@ -644,22 +625,28 @@ void fallbackToPassword() {
     }
 }
 
-void line(const String& message, const String& buffer, bool silent = false) {
+void queueAnnouncement(SpeechText message) {
+    announcements.push(std::move(message));
+}
+
+void queueAnnouncement(String message) {
+    if (message.length()) queueAnnouncement(std::make_shared<String>(std::move(message)));
+}
+
+void line(String message, const String& buffer, bool silent = false) {
     if (!message.length()) return;
-    const String text = message.substring(0, 480);
+    const bool atEnd = historyIndex == int(history.size());
     size_t bytes = 0;
-    for (const auto& item : history) bytes += item.text.length() + item.buffer.length();
-    while (!history.empty() && (history.size() >= 24 || bytes + text.length() + buffer.length() > 1800)) {
-        bytes -= history.front().text.length() + history.front().buffer.length();
+    for (const auto& item : history) bytes += item.text->length() + item.buffer.length();
+    while (!history.empty() && (history.size() >= 24 || bytes + message.length() + buffer.length() > 1800)) {
+        bytes -= history.front().text->length() + history.front().buffer.length();
         history.pop_front();
-        historyIndex = std::max(0, historyIndex - 1);
+        historyIndex = std::max(-1, historyIndex - 1);
     }
-    history.push_back({text, buffer});
-    if (!silent && orderedRead == OrderedRead::None &&
-        std::find(muted.begin(), muted.end(), buffer) == muted.end()) {
-        if (announcements.size() == 4) announcements.pop_front();
-        announcements.push_back(history.back().text);
-    }
+    history.push_back({std::make_shared<String>(std::move(message)), buffer});
+    if (atEnd) historyIndex = int(history.size());
+    if (!silent && std::find(muted.begin(), muted.end(), buffer) == muted.end())
+        queueAnnouncement(history.back().text);
 }
 
 void focusMenu(bool immediate = false) {
@@ -700,7 +687,6 @@ void updateMenu(JsonObjectConst packet) {
     // An active status box owns focus until the server removes it.
     if (!same && id == "turn_menu" && menuId == "status_box" && !items.empty()) return;
     if (!same || entries.size() == 0) menuSpeech = "";
-    if (!same && orderedRead == OrderedRead::Menu) stopOrderedRead();
     const bool startReading = id == "status_box" ||
         (id == "game_over" && (!same || items.empty()) && menuPosition(entries, "score_line") >= 0);
     menuId = id;
@@ -752,8 +738,16 @@ void updateMenu(JsonObjectConst packet) {
     waitingForMenu = false;
     retryUntil = 0;
     if (pane == Pane::Game && !items.empty()) {
-        if (startReading)
-            beginOrderedRead(OrderedRead::Menu);
+        if (startReading) {
+            String text = prompt;
+            for (const auto& item : items) {
+                if (id == "game_over" && item.id != "score_line") continue;
+                if (text.length()) text += '\n';
+                text += item.text;
+            }
+            if (orderedRead == OrderedRead::None) readText(std::move(text));
+            else queueAnnouncement(std::move(text));
+        }
         else if (!same) {
             const String message = prompt.length() ? prompt + ". " + items[selected].text : items[selected].text;
             line(message, "menu", true);
@@ -778,9 +772,18 @@ void receive(const uint8_t* text, size_t length) {
         type != "pong" && type != "request_input" && type != "document_editor" &&
         type != "tutorial_prompt") return;
     shape.clear();
+    if (type == "menu") {
+        for (const char* field : {"menu_id", "grid_enabled", "multiletter_enabled", "escape_behavior",
+                                 "grid_width", "grid_start_index", "grid_rows", "prompt",
+                                 "position", "selection_id"})
+            shape[field] = true;
+        // Legacy menus mix plain strings and objects in the same array.
+        shape["items"] = true;
+    } else shape.set(true);
     header.clear();
     JsonDocument data;
     error = deserializeJson(data, reinterpret_cast<const char*>(text), length,
+                            DeserializationOption::Filter(shape),
                             DeserializationOption::NestingLimit(20));
     if (error) { if (error == DeserializationError::NoMemory) record(JsonNoMemory); return; }
     JsonObjectConst packet = data.as<JsonObjectConst>();
@@ -810,17 +813,11 @@ void receive(const uint8_t* text, size_t length) {
         menuId = "";
         selected = 0;
         menuSpeech = "";
-        if (orderedRead == OrderedRead::Menu) stopOrderedRead();
     }
     else if (type == "speak") {
         String message = packet["text"] | "";
         const String buffer = packet["buffer"] | "game";
-        const bool silent = (packet["muted"] | false) || (packet["replay"] | false);
-        if (!silent && message.length() &&
-            std::find(muted.begin(), muted.end(), buffer) == muted.end()) {
-            line(message, buffer, true);
-            readText(std::move(message));
-        } else line(message, buffer, true);
+        line(std::move(message), buffer, (packet["muted"] | false) || (packet["replay"] | false));
     }
     else if (type == "chat") {
         const String convo = packet["convo"] | "chat";
@@ -829,7 +826,7 @@ void receive(const uint8_t* text, size_t length) {
     } else if (type == "play_sound" && signedIn && storage) {
         playEffect(packet["name"] | "", std::clamp(packet["volume"] | 100, 0, 100));
     }
-    else if (type == "pong") say("Server responded");
+    else if (type == "pong") queueAnnouncement("Server responded");
     else if (type == "request_input" && signedIn) {
         inputId = packet["input_id"] | "";
         entry = packet["default_value"] | "";
@@ -837,11 +834,11 @@ void receive(const uint8_t* text, size_t length) {
         inputMultiline = packet["multiline"] | false;
         inputCancelable = packet["cancel_supported"] | true;
         waitingForMenu = false;
-        say(packet["prompt"] | "Input requested");
+        queueAnnouncement(packet["prompt"] | "Input requested");
     } else if (type == "document_editor" && signedIn) {
         documentId = packet["dialog_id"] | "";
         entry = packet["content"] | "";
-        say(String(packet["prompt"] | "Edit document") +
+        queueAnnouncement(String(packet["prompt"] | "Edit document") +
             ". Alt R reads the text, Shift Enter inserts a line, Enter saves, Escape cancels");
     } else if (type == "tutorial_prompt" && signedIn) {
         const String id = packet["prompt_id"] | "";
@@ -853,7 +850,7 @@ void receive(const uint8_t* text, size_t length) {
         for (JsonObjectConst action : packet["actions"].as<JsonArrayConst>())
             tutorialActions.push_back({action["label"] | "", action["id"] | ""});
         tutorialSelected = 0;
-        say(tutorialText + (tutorialActions.empty() ? String() : ". " + tutorialActions[0].text));
+        queueAnnouncement(tutorialText + (tutorialActions.empty() ? String() : ". " + tutorialActions[0].text));
     }
 }
 
@@ -871,7 +868,8 @@ void selectMenu() {
         logoutDeadline = millis() + 2500;
         return;
     }
-    playEffect("menuenter.ogg");
+    // A keypress should not start a second network client while the reply arrives.
+    sound::localCue(*storage, "menuenter.ogg", unsigned(effectVolume) * mediaVolume / 100);
 }
 
 void bindKey(const String& name, const Key& key) {
@@ -937,7 +935,7 @@ void historyKey(const Key& key) {
          i >= 0 && i < count; i += key.shift ? -step : step) {
         if (!historyBuffer.length() || history[i].buffer == historyBuffer) {
             historyIndex = i;
-            say(history[i].text);
+            beginOrderedRead(OrderedRead::Text, history[i].text);
             return;
         }
     }
@@ -1074,12 +1072,12 @@ void tick(bool speechBusy) {
         }
     }
     if (orderedRead != OrderedRead::None) readNextPart(speechBusy);
-    else if (menuSpeech.length()) {
-        if (pane == Pane::Game) say(menuSpeech);
+    else if (!speechBusy && menuSpeech.length()) {
+        if (pane == Pane::Game) say(menuSpeech, false);
         menuSpeech = "";
     } else if (!speechBusy && !announcements.empty()) {
-        say(announcements.front());
-        announcements.pop_front();
+        beginOrderedRead(OrderedRead::Live, announcements.pop());
+        readNextPart(false);
     }
     if (welcomePending && signedIn && !waitingForMenu) {
         welcomePending = false;
@@ -1110,7 +1108,8 @@ void key(const Key& key, bool repeated) {
     if (key.alt && key.base == 'h') {
         say("Tab cycles Game, Chat, and History. Semicolon up, period down, comma left, slash right. "
             "Hold an arrow to repeat. Control stops speech. "
-            "Function and digits for F keys. Backtick is Escape in Game. Alt M returns to Game. Alt U sets the sound server. "
+            "Function and digits for F keys. Backtick is Escape in Game. Alt M returns to Game. "
+            "Tap Function to read game view information. Alt U sets the sound server. "
             "Alt S signs out. Alt Q returns to Cardputer Home");
         return;
     }
@@ -1371,6 +1370,13 @@ void key(const Key& key, bool repeated) {
     }
 }
 
+void readGameView() {
+    if (!signedIn || screen != Screen::Game || waitingForMenu || logoutPending) return;
+    stopOrderedRead();
+    if (menuId.isEmpty() || prompt.isEmpty()) say("No game view information");
+    else readText(prompt);
+}
+
 #ifdef UNIFIED_DIAGNOSTICS
 void status() {
     Serial.printf("PP s=%u w=%d h=%u l=%u t=%s i=%d/%u\n", unsigned(screen), int(WiFi.status()),
@@ -1405,4 +1411,6 @@ void stopAnnouncements() {
     announcements.clear();
     menuSpeech = "";
 }
+
+bool readingText() { return orderedRead == OrderedRead::Text; }
 }

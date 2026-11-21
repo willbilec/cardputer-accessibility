@@ -27,6 +27,7 @@ def main():
         ("global-shortcuts", "test/test_global_shortcuts.cpp", "-Iinclude"),
         ("synth", "test/test_synth.cpp", "-Iinclude src/synth.cpp"),
         ("playpalace-grid", "test/test_playpalace_grid.cpp", "-Iinclude"),
+        ("playpalace-speech", "test/test_playpalace_speech.cpp", "-Iinclude"),
         ("recording-wav-header", "test/test_wav_header.cpp", "-Iinclude"),
         ("settings-codec", "test/test_settings_codec.cpp", "-Iinclude"),
         ("player-adapter", "test/test_player_adapter.cpp", "-Itest/fakes -I../speech-prototype/src"),

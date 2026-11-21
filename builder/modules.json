@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "launcher": "0.2.0",
+  "launcher": "0.2.1",
   "components": {
     "media-decoder": {
       "sources": ["media_decoder.cpp"]
@@ -50,7 +50,8 @@
       "id": "playpalace",
       "name": "PlayPalace",
       "description": "Play online games with offline speech and optional sound effects.",
-      "version": "0.2.0",
+      "version": "0.2.1",
+      "introduced": "0.2.0",
       "kind": "native",
       "requires": ["vorbis-codec", "json"],
       "sources": ["playpalace.cpp", "playpalace_sound.cpp"],
@@ -122,7 +123,7 @@
       "id": "controls-guide",
       "name": "Cardputer keyboard and speech guide",
       "description": "An offline reference for keys, speech controls, and apps.",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "kind": "sd",
       "source": "research/offline-reader/UNIFIED_CONTROLS.md",
       "filename": "Controls.txt"
