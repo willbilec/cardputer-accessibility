@@ -30,7 +30,7 @@ jobs:
   firmware:
     strategy:
       matrix:
-        selection: [core, voice-recorder, bluetooth-usb-keyboard, playpalace, nvda-remote, voice-changer, bible, synthesizer, sd-sharing, compressed-playback, all]
+        selection: [core, key-learning, voice-recorder, bluetooth-usb-keyboard, playpalace, nvda-remote, voice-changer, bible, synthesizer, sd-sharing, compressed-playback, all]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
