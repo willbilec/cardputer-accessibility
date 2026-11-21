@@ -52,9 +52,10 @@ finished firmware builds. Compatible selections reuse compiler objects
 while saving each completed image separately. Keep the workspace when
 updating the program.
 
-The builder checks for program updates from GitHub. Compatible
-updates download only the application files and take effect the next time
-you open the builder. A runtime compatibility change requires the Windows
+The builder silently checks for program updates from GitHub. It downloads the
+individual application and help files, verifies every SHA-256 checksum, then
+switches to the update only after all files pass. Updates take effect the next
+time you open the builder. A runtime compatibility change requires the Windows
 ZIP or updated Linux dependencies. You can check manually from the Tools menu.
 When a single Cardputer is connected at startup, the builder also checks
 its reported firmware and app versions against GitHub and summarizes

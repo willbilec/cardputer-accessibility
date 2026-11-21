@@ -1,14 +1,16 @@
-"""Download and stage a compatible program-only GitHub update."""
+"""Fetch, checksum, and stage individual compatible builder update files."""
 
+import hashlib
 import json
 from pathlib import Path
+import re
 import tempfile
-from zipfile import ZIP_DEFLATED, ZipFile
 
-from build import ROOT, STATE, load_modules
-from catalog import GITHUB_API, RELEASE_BASE, describe_asset, fetch_asset, request, version
+from build import ROOT, STATE, digest, load_modules
+from catalog import GITHUB_API, RELEASE_BASE, REPOSITORY, request, version
 
 RUNTIME_ABI = 2
+MAX_UPDATE_BYTES = 4 * 1024**2
 PROGRAM_FILES = ("app.py", "build.py", "catalog.py", "flash.py", "progress.py",
                  "program_update.py", "source_files.py")
 PROGRAM_ASSETS = tuple(
@@ -34,43 +36,77 @@ def check_update():
     if len(payload) > 16 * 1024:
         raise ValueError("Program update metadata is too large.")
     update = json.loads(payload)
-    if update["tag"] != tag or version(update["version"]) != latest:
+    if update.get("schema") != 2 or update.get("tag") != tag or version(update["version"]) != latest:
         raise ValueError("The program update does not match the GitHub release tag.")
-    if update["runtime_abi"] != current["runtime_abi"]:
-        raise ValueError(
-            "This program release needs a newer runtime. Download the latest Windows ZIP from "
-            "https://github.com/willbilec/cardputer-accessibility/releases/latest."
-        )
+    if update["runtime_abi"] != RUNTIME_ABI or current["runtime_abi"] != RUNTIME_ABI:
+        return {"version": update["version"], "requires_full_runtime": True}
+    _validate_manifest(update)
     return update
+
+
+def _validate_manifest(update):
+    files = update.get("files")
+    if not isinstance(files, list) or not files:
+        raise ValueError("The program update file list is invalid.")
+    seen = set()
+    total = 0
+    for item in files:
+        name = item.get("path") if isinstance(item, dict) else None
+        size = item.get("size") if isinstance(item, dict) else None
+        checksum = item.get("sha256") if isinstance(item, dict) else None
+        is_module = isinstance(name, str) and bool(re.fullmatch(r"[a-z][a-z0-9_]*\.py", name))
+        is_help = isinstance(name, str) and bool(re.fullmatch(r"help/[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(txt|html)", name))
+        if not (is_module or is_help) or name in seen:
+            raise ValueError("The program update contains an unexpected file.")
+        if not isinstance(size, int) or isinstance(size, bool) or size < 0 \
+                or not isinstance(checksum, str) or len(checksum) != 64:
+            raise ValueError(f"The update metadata for {name} is invalid.")
+        try:
+            int(checksum, 16)
+        except ValueError as error:
+            raise ValueError(f"The checksum for {name} is invalid.") from error
+        total += size
+        if size > MAX_UPDATE_BYTES or total > MAX_UPDATE_BYTES:
+            raise ValueError("The program update exceeds its size limit.")
+        seen.add(name)
+    if not set(PROGRAM_FILES).issubset(seen):
+        raise ValueError("The program update is missing required files.")
 
 
 def install_update(update, state=STATE):
     version(update["version"])
     if update["runtime_abi"] != RUNTIME_ABI:
         raise ValueError("Incompatible program update.")
-    archive = fetch_asset(update, update["asset"], state)
+    _validate_manifest(update)
     programs = state / "program"
     programs.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=programs) as staging:
         candidate = Path(staging) / "app"
         candidate.mkdir()
-        with ZipFile(archive) as package:
-            names = [entry.filename for entry in package.infolist()]
-            if sorted(names) != sorted((*PROGRAM_FILES, *PROGRAM_ASSETS, "program.json")):
-                raise ValueError("Unexpected files in the program update.")
-            if sum(entry.file_size for entry in package.infolist()) > 4 * 1024**2:
-                raise ValueError("Program update exceeds its extraction limit.")
-            package.extractall(candidate)
-        info = json.loads((candidate / "program.json").read_text(encoding="utf-8"))
+        tag = update["tag"]
+        if tag != "v" + update["version"]:
+            raise ValueError("The program update tag does not match its version.")
+        for item in update["files"]:
+            name = item["path"]
+            target = candidate / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            url = f"https://raw.githubusercontent.com/{REPOSITORY}/{tag}/builder/{name}"
+            with request(url) as response:
+                payload = response.read(item["size"] + 1)
+            if len(payload) != item["size"] or hashlib.sha256(payload).hexdigest() != item["sha256"]:
+                raise ValueError(f"Downloaded builder file failed checksum verification: {name}")
+            target.write_bytes(payload)
+        info = {"version": update["version"], "runtime_abi": RUNTIME_ABI}
+        (candidate / "program.json").write_text(json.dumps(info), encoding="utf-8")
         if info != {"version": update["version"], "runtime_abi": RUNTIME_ABI}:
             raise ValueError("Program update version metadata differs.")
-        for filename in PROGRAM_FILES:
+        for filename in (item["path"] for item in update["files"] if item["path"].endswith(".py")):
             compile((candidate / filename).read_bytes(), filename, "exec")
         destination = programs / info["version"]
         if not destination.exists():
             candidate.rename(destination)
         else:
-            for filename in (*PROGRAM_FILES, *PROGRAM_ASSETS, "program.json"):
+            for filename in (*[item["path"] for item in update["files"]], "program.json"):
                 if (destination / filename).read_bytes() != (candidate / filename).read_bytes():
                     raise ValueError("An installed copy of this program version differs.")
         pointer = Path(staging) / "program-update.json"
@@ -79,11 +115,12 @@ def install_update(update, state=STATE):
 
 
 def write_update_assets(root, tag, output):
-    info = {"version": tag.removeprefix("v"), "runtime_abi": RUNTIME_ABI}
-    archive = output / "builder-update.zip"
-    with ZipFile(archive, "w", compression=ZIP_DEFLATED) as package:
-        for name in (*PROGRAM_FILES, *PROGRAM_ASSETS):
-            package.write(root / "builder" / name, name)
-        package.writestr("program.json", json.dumps(info))
-    metadata = dict(info, tag=tag, asset=describe_asset(archive))
+    version_number = tag.removeprefix("v")
+    version(version_number)
+    files = []
+    for name in (*PROGRAM_FILES, *PROGRAM_ASSETS):
+        path = root / "builder" / name
+        files.append({"path": name, "sha256": digest(path), "size": path.stat().st_size})
+    metadata = {"schema": 2, "version": version_number, "runtime_abi": RUNTIME_ABI,
+                "tag": tag, "files": files}
     (output / "builder-update.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")

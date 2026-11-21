@@ -16,7 +16,7 @@ from catalog import describe_asset, device_update_summary, fetch_asset, install_
 from flash import FLASH_BYTES, check_layout, flash
 from source_files import firmware_files
 from progress import output_events
-from program_update import PROGRAM_ASSETS, PROGRAM_FILES, install_update, write_update_assets
+from program_update import install_update, write_update_assets
 
 
 def partition_table():
@@ -156,10 +156,12 @@ class BuilderTests(unittest.TestCase):
         firmware.write_bytes(b"existing firmware")
         write_update_assets(ROOT, "v0.3.0", assets)
         record = json.loads((assets / "builder-update.json").read_text())
-        archive = assets / record["asset"]["file"]
-        with ZipFile(archive) as package:
-            self.assertEqual(set(package.namelist()), {*PROGRAM_FILES, *PROGRAM_ASSETS, "program.json"})
-        with patch("program_update.fetch_asset", return_value=archive):
+
+        def download_file(url):
+            name = url.rsplit("/builder/", 1)[1]
+            return io.BytesIO((ROOT / "builder" / name).read_bytes())
+
+        with patch("program_update.request", side_effect=download_file):
             install_update(record, state)
         self.assertEqual(json.loads((state / "program-update.json").read_text())["version"], "0.3.0")
         self.assertTrue((state / "program/0.3.0/app.py").is_file())

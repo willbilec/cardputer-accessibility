@@ -281,13 +281,19 @@ class Builder(wx.Frame):
                 if event is not None:
                     self.notify("No compatible builder update is available.")
                 return
-            if wx.MessageBox(
-                f"Builder {update['version']} is available. Download the application files "
-                "and use them the next time you open the builder?",
-                "Builder update", wx.YES_NO | wx.NO_DEFAULT, self,
-            ) == wx.YES:
-                self.work("Downloading builder application update.", lambda: install_update(update),
-                          lambda _: self.notify("Builder updated. Close and reopen it to use the new version."))
+            if update.get("requires_full_runtime"):
+                self.report(
+                    f"Builder {update['version']} changes the bundled runtime. "
+                    "No files were changed; install that release's complete Windows package."
+                )
+                return
+            self.work(
+                "Downloading and verifying builder update files.",
+                lambda: install_update(update),
+                lambda _: self.report(
+                    f"Builder {update['version']} was updated. Close and reopen it to use the new version."
+                ),
+            )
 
         if event is not None:
             self.work("Checking GitHub for builder updates.", check_update, ready)
