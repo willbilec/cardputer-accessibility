@@ -1,4 +1,5 @@
 #include "nvda_remote.h"
+#include "unified_screen.h"
 #include "nvda_frames.h"
 #include "nvda_keys.h"
 #include "nvda_tls.h"
@@ -97,7 +98,7 @@ Report lastReport{};
 RemoteKeyboard remoteKeyboard;
 constexpr const char* fields[]={"Server host","Port","Session key","Certificate fingerprint, optional","Connection name, optional",
                                 "Wake on LAN MAC address, optional"};
-constexpr const char* help="Semicolon and period move in the menu. Enter selects. Alt Backspace forgets a recent connection. Alt Q returns Home. Alt Enter switches between computer and local control. During control, semicolon, comma, period and slash are up, left, down and right by default. Tap Alt to switch layers. Function N opens the NVDA menu. Function with 1 through Equals sends F1 through F12. Hold Function and physical Alt for NVDA number shortcuts. Release Alt while holding Function for NVDA F key shortcuts. Control plus Option sends Left Alt. In local mode press Alt D to disconnect, or Enter to retry after an error.";
+constexpr const char* help="Semicolon and period move in the menu. Enter selects. Option Backspace forgets a recent connection. Alt Q returns Home. Option Enter switches between computer and local control. During control, semicolon, comma, period and slash are up, left, down and right by default. Tap Alt to switch layers. Function N opens the NVDA menu. Function with 1 through Equals sends F1 through F12. Hold Function and Option for NVDA number shortcuts. Release Option while holding Function for NVDA F key shortcuts. Control plus Option sends Left Alt. In local mode press Option D to disconnect, or Enter to retry after an error.";
 
 String& value(Profile& p,unsigned index) {
  switch(index){case 0:return p.host;case 1:return p.port;case 2:return p.key;case 3:return p.pin;case 4:return p.label;default:return p.wakeMac;}
@@ -192,6 +193,14 @@ String menuItem(){
 }
 void speakMenu(const String& prefix=""){
  speak(prefix+menuItem()+", "+String(item+1)+" of "+String(recentCount+3));
+#ifdef UNIFIED_SCREEN
+ unifiedScreen::menu("NVDA Remote",unifiedScreen::Icon::Radio,recentCount+3,item,
+   [](int index)->String{
+    if(index<recentCount)return "Recent: "+description(recent[index]);
+    if(index==recentCount)return "Load from SD";
+    return index==recentCount+1?"Enter manually":"Wake a saved computer";
+   },prefix.length()?"; . Move   Enter Select   Alt+Q Home":nullptr);
+#endif
 }
 void loadRecent(){
  recent={};recentCount=0;
@@ -625,6 +634,11 @@ void connect(bool wakeOnly=false) {
 }
 void speakWakeChoice(const String& prefix=""){
  speak(prefix+description(recent[wakeChoices[wakeItem]])+", "+String(wakeItem+1)+" of "+String(wakeCount)+". Enter sends wake. Backspace goes back.");
+#ifdef UNIFIED_SCREEN
+ unifiedScreen::menu("Wake a saved computer",unifiedScreen::Icon::Radio,wakeCount,wakeItem,
+   [](int index)->String{return description(recent[wakeChoices[index]]);},
+   prefix.length()?"; . Move   Enter Wake   Backspace Back":nullptr);
+#endif
 }
 void openWakeMenu(){
  wakeItem=wakeCount=0;
@@ -687,13 +701,13 @@ void key(const HeadlessKeyboard::Event& e,const HeadlessKeyboard::State& s) {
   if(!e.down)return;
   if(escape){
    sessionPin="";screen=Screen::Menu;item=0;speakMenu("Certificate declined. ");
-  }else if(s.alt&&base=='f'){
+  }else if(s.opt&&!s.alt&&base=='f'){
    String reading="SHA 256 fingerprint. ";
    for(unsigned i=0;i<64;++i){
     reading+=session->fingerprint[i];reading+=(i%8==7?". ":" ");
    }
    speak(reading);
-  }else if(s.alt&&(base=='y'||base=='o')){
+  }else if(s.opt&&!s.alt&&(base=='y'||base=='o')){
    if(!session->done)return;
    sessionPin=session->fingerprint;
    if(base=='y'){
@@ -701,14 +715,14 @@ void key(const HeadlessKeyboard::Event& e,const HeadlessKeyboard::State& s) {
     profile.pin=sessionPin;
     if(!remember()){
      profile.pin=previous;
-     speak("Could not save trust. Alt O connects once or Alt Y retries saving.");return;
+     speak("Could not save trust. Option O connects once or Option Y retries saving.");return;
     }
    }
    connect();
   }
   return;
  }
- if(e.down&&s.alt&&!s.fn&&!s.ctrl&&!s.opt&&enter&&screen==Screen::Session){
+ if(e.down&&s.opt&&!s.fn&&!s.ctrl&&!s.alt&&enter&&screen==Screen::Session){
   localShortcut();
   if(!session||session->state!=State::Ready){forwarding=false;speak("Waiting for one controlled computer.");return;}
   forwarding=!forwarding;
@@ -733,7 +747,7 @@ void key(const HeadlessKeyboard::Event& e,const HeadlessKeyboard::State& s) {
   return;
  }
  if(!e.down)return;
- if(s.alt&&base=='h'){speak(help);return;}
+ if(s.opt&&!s.alt&&base=='k'){speak(help);return;}
  const bool backspace=e.row==0&&e.col==13&&!s.fn;
  const bool menuKey=!s.alt&&!s.ctrl&&!s.opt;
  const bool moveMenu=menuKey&&(base==';'||base=='.'||base==9);
@@ -743,7 +757,7 @@ void key(const HeadlessKeyboard::Event& e,const HeadlessKeyboard::State& s) {
    const unsigned count=recentCount+3;
    item=(item+(previous?count-1:1))%count;
    speakMenu();
-  }else if(s.alt&&backspace&&item<recentCount){
+  }else if(s.opt&&!s.alt&&backspace&&item<recentCount){
    screen=Screen::Forget;
    speak("Forget "+description(recent[item])+"? Enter confirms. Function backtick cancels.");
   }else if(menuKey&&enter){
@@ -813,7 +827,7 @@ void key(const HeadlessKeyboard::Event& e,const HeadlessKeyboard::State& s) {
  }else if(menuKey&&backspace&&session&&session->wakeOnly){
   session->closing=true;
   screen=Screen::WakeMenu;speakWakeChoice();
- }else if((s.alt&&base=='d')||escape){
+ }else if((s.opt&&!s.alt&&base=='d')||escape){
   localShortcut();
   if(session)session->closing=true;
   sessionPin="";
@@ -859,7 +873,7 @@ void tick(bool speaking) {
     armOnReady=false;
     {
      const bool saved=remember();
-     String message=forwarding?"Controlling remote computer.":"Controlled computer available. Press Alt Enter to control.";
+     String message=forwarding?"Controlling remote computer.":"Controlled computer available. Press Option Enter to control.";
      if(!saved)message+=" Recent connection could not be saved.";
      speak(message);
     }
@@ -878,7 +892,7 @@ void tick(bool speaking) {
    case State::Trust:
     speak(String(session->profile.pin.length()?"The NVDA host certificate changed. ":"The NVDA host certificate is not trusted. ")+
           profile.host+", port "+profile.port+
-          ". Alt F reads the fingerprint. Verify it on your computer. Alt Y trusts and saves. Alt O trusts once. Function backtick cancels.");
+          ". Option F reads the fingerprint. Verify it on your computer. Option Y trusts and saves. Option O trusts once. Function backtick cancels.");
     break;
    case State::Join:speak("Could not join NVDA Remote. Check the connection details. Enter retries.");break;
    case State::Lost:speak("NVDA Remote connection lost. Enter retries.");break;

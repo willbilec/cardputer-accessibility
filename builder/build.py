@@ -128,7 +128,7 @@ def resolve_components(components, modules):
     return selected
 
 
-def generate(project, catalog, selected):
+def generate(project, catalog, selected, screen=False):
     modules = {module["id"]: module for module in catalog["modules"] if module["kind"] == "native"}
     unknown = set(selected) - modules.keys()
     if unknown:
@@ -153,6 +153,10 @@ def generate(project, catalog, selected):
         '-I "${platformio.core_dir}/packages/framework-arduinoespressif32/libraries/NetworkClientSecure/src"',
     ]
     libraries = ["symlink://generated/backgroundaudio-trial"]
+    if screen:
+        identity["screen"] = True
+        flags.append("-DUNIFIED_SCREEN=1")
+        libraries.append("symlink://../M5GFX")
     app_flags = []
     scripts = ["${env.extra_scripts}"]
     registrations = []
@@ -212,22 +216,24 @@ def verify_linked_codecs(artifacts, core, components):
         print(f"{component}: {'linked' if linked else 'omitted'}", flush=True)
 
 
-def build(root, selected, destination, run=subprocess.check_call, fetch=True, check_codecs=False):
+def build(root, selected, destination, run=subprocess.check_call, fetch=True, check_codecs=False, screen=False):
     root = root.resolve()
     destination = destination.resolve()
     catalog = load_modules(root)
     project = root / "research/offline-reader"
     with project_lock(project):
-        return build_locked(root, project, catalog, selected, destination, run, fetch, check_codecs)
+        return build_locked(root, project, catalog, selected, destination, run, fetch, check_codecs, screen)
 
 
-def build_locked(root, project, catalog, selected, destination, run, fetch, check_codecs):
-    config, identity, core = generate(project, catalog, selected)
+def build_locked(root, project, catalog, selected, destination, run, fetch, check_codecs, screen=False):
+    config, identity, core = generate(project, catalog, selected, screen)
     if fetch:
         dependencies = [str(PYTHON), "-u", str(root / "fetch_dependencies.py"), "--firmware"]
         if "bluetooth-usb-keyboard" in selected:
             dependencies.append("--keyboard")
         run(dependencies, cwd=root)
+        if screen:
+            run([str(PYTHON), "-u", str(root / "fetch_dependencies.py"), "M5GFX"], cwd=root)
     # PlatformIO resolves local libraries before running its pre-build scripts.
     run([str(PYTHON), str(project / "prepare_background.py")], cwd=project)
     cpu_count = getattr(os, "process_cpu_count", os.cpu_count)() or 2
@@ -259,6 +265,7 @@ if __name__ == "__main__":
     parser.add_argument("--preset", help="core, all, or a single module ID")
     parser.add_argument("--skip-fetch", action="store_true")
     parser.add_argument("--check-codecs", action="store_true", help="Check codec presence in linked firmware")
+    parser.add_argument("--screen", action="store_true", help="Keep the LCD on and show spoken text")
     args = parser.parse_args()
     selected = args.modules
     if args.preset and selected:
@@ -267,4 +274,4 @@ if __name__ == "__main__":
         selected = [item["id"] for item in load_modules(ROOT)["modules"] if item["kind"] == "native"]
     elif args.preset and args.preset != "core":
         selected = [args.preset]
-    build(ROOT, selected, args.output, fetch=not args.skip_fetch, check_codecs=args.check_codecs)
+    build(ROOT, selected, args.output, fetch=not args.skip_fetch, check_codecs=args.check_codecs, screen=args.screen)

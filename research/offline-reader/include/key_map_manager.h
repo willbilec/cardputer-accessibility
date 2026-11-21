@@ -95,6 +95,11 @@ public:
  }
 
  bool changed() const { return dirty; }
+#ifdef UNIFIED_SCREEN
+ int choiceCount() const { return choosing ? results.size() : 0; }
+ int selectedChoice() const { return selection; }
+ String choiceLabel(int index) const { return name(results[index],false); }
+#endif
  const Map &map() const { return draft; }
  void saved() { dirty = false; }
  void cancelHold() { held = -1; }

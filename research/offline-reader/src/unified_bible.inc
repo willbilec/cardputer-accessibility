@@ -227,6 +227,7 @@ void seekBible(bool forward){
  bibleApp.scanned=bibleApp.quiet=0;
 }
 
+int bibleMenuCount();
 void focusBibleMenu(){
  switch(bibleApp.menu){
  case BibleMenu::Books:say(bible::names[bibleApp.cursor]);break;
@@ -234,6 +235,16 @@ void focusBibleMenu(){
  case BibleMenu::Versions:say(bibleApp.versions[bibleApp.cursor]);break;
  default:break;
  }
+#ifdef UNIFIED_SCREEN
+ const char *title=bibleApp.menu==BibleMenu::Books?"Bible books":
+   bibleApp.menu==BibleMenu::Chapters?"Bible chapters":"Bible versions";
+ unifiedScreen::menu(title,unifiedScreen::Icon::Book,bibleMenuCount(),bibleApp.cursor,
+   [](int index)->String{
+    if(bibleApp.menu==BibleMenu::Books)return bible::names[index];
+    if(bibleApp.menu==BibleMenu::Chapters)return "Chapter "+String(bibleApp.choices[index].number);
+    return bibleApp.versions[index];
+   });
+#endif
 }
 
 int bibleMenuCount(){
@@ -312,8 +323,8 @@ void handleBible(const HeadlessKeyboard::Event& event,const HeadlessKeyboard::St
  const bool enter=event.row==2&&event.col==13;
  const bool back=event.row==0&&event.col==13;
  const bool escape=state.fn&&event.row==0&&event.col==0;
- if(state.ctrl||state.opt||state.shift)return;
- if(state.alt){
+ if(state.ctrl||state.alt||state.shift)return;
+ if(state.opt){
   if(!state.fn&&key=='m'&&bibleApp.menu==BibleMenu::Player){
    const auto bookmark=readBiblePosition("bibleBookmark");
    if(!bookmark.chapter)say("No Bible bookmark saved");

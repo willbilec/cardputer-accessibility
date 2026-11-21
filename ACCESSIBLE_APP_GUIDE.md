@@ -25,6 +25,10 @@ listening and keyboard acceptance.
 
 ## 2. Describe the app in keyboard and speech terms
 
+Reserve physical Alt for shared screen-reader commands. A tap of Alt switches
+layers in keyboard modes that support layer switching. Choose unmodified
+keys or Option chords for app commands, checking shared Option bindings first.
+
 For each interactive screen, choose the keys, focus order, spoken feedback
 and exit behavior before implementing it. Use the existing global commands
 and menu conventions. Make the essential workflow usable from power-on

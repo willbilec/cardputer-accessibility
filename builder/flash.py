@@ -170,6 +170,8 @@ def flash(selected, directory, *, allow_migration=False, backup=None, report=pri
     esptool(port, "flash-id", after="watchdog-reset")
     report("Waiting for the launcher to report its version.")
     expected = {key: manifest[key] for key in ("launcher", "modules")}
+    if "screen" in manifest:
+        expected["screen"] = manifest["screen"]
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
         for candidate in ports():

@@ -5,7 +5,7 @@
 // obscure the distinction between reader volume and speech-rate commands.
 namespace globalShortcuts {
 enum class Command { None, VolumeUp, VolumeDown, RateDown, RateUp,
-                     CombinedVolumeUp, CombinedVolumeDown,
+                     CombinedVolumeUp, CombinedVolumeDown, MediaUp, MediaDown,
                      Home, Battery, Time, Network, Stop, Repeat, Help };
 struct Key { uint8_t row, col; bool down, option, function, alt, control, shift; };
 inline Command route(const Key &k) {
@@ -20,6 +20,10 @@ inline Command route(const Key &k) {
         if (!k.function && k.row == 2 && k.col == 7) return Command::Help;
     }
     if (k.alt && !k.option && !k.function) {
+        if (k.row == 0 && k.col == 11) return Command::MediaDown; // Minus
+        if (k.row == 0 && k.col == 12) return Command::MediaUp; // Equals
+        if (k.row == 1 && k.col == 11) return Command::VolumeDown; // Left bracket
+        if (k.row == 1 && k.col == 12) return Command::VolumeUp; // Right bracket
         if (k.row == 2 && k.col == 11) return Command::CombinedVolumeUp;
         if (k.row == 3 && k.col == 11) return Command::CombinedVolumeDown;
         if (k.row == 3 && k.col == 10) return Command::RateDown;
@@ -32,16 +36,4 @@ inline Command route(const Key &k) {
     return Command::None;
 }
 
-inline Command routeSynth(const Key &k) {
-    if (!k.down || !k.alt || k.option || k.control || k.shift) return Command::None;
-    if (k.function) {
-        if (k.row == 2 && k.col == 11) return Command::VolumeUp;
-        if (k.row == 3 && k.col == 11) return Command::VolumeDown;
-        if (k.row == 3 && k.col == 10) return Command::RateDown;
-        if (k.row == 3 && k.col == 12) return Command::RateUp;
-        return Command::None;
-    }
-    if (k.row == 3 && k.col == 13) return Command::Stop;
-    return route(k);
-}
 }

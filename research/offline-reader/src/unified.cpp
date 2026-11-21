@@ -1,5 +1,10 @@
 // Work in progress. This image is not yet suitable for installation.
 #include <Arduino.h>
+#ifdef UNIFIED_SCREEN
+#include <M5GFX.h>
+#include <lgfx/v1/panel/Panel_ST7789.hpp>
+#include "unified_screen.h"
+#endif
 #ifdef UNIFIED_CUSTOM_BUILD
 #include "builder_identity.h"
 #include "launcher_app.h"
@@ -74,6 +79,163 @@ extern "C" float espeak_GetPlaybackTempo();
 #include "playpalace_sound.h"
 #endif
 
+#ifdef UNIFIED_SCREEN
+namespace unifiedScreen {
+namespace {
+// Use the LCD on SPI3. The SD card uses the Arduino SPI bus on SPI2.
+lgfx::LGFX_Device screen;
+lgfx::Bus_SPI screenBus;
+lgfx::Panel_ST7789 screenPanel;
+bool screenReady=false, backlightOn=false;
+uint32_t lastInput=0;
+int timeoutSeconds=0;
+String pendingText;
+const char *pendingHelp=nullptr;
+constexpr int headerHeight=22, rowHeight=16, footerHeight=15;
+constexpr uint32_t background=0x101820, header=0x22364a, textColor=0xf0f6ff;
+constexpr uint32_t highlight=0x16639c, accent=0x83d8ff;
+
+void drawIcon(Icon icon,int x,int y,uint32_t color){
+ switch(icon){
+ case Icon::Folder:
+  screen.fillRect(x,y+1,5,3,color);
+  screen.drawRoundRect(x,y+3,13,9,2,color);break;
+ case Icon::Settings:
+  screen.drawCircle(x+6,y+6,4,color);
+  screen.drawFastHLine(x,y+6,13,color);
+  screen.drawFastVLine(x+6,y,13,color);break;
+ case Icon::Radio:
+  screen.drawLine(x,y+3,x+6,y+9,color);
+  screen.drawLine(x+6,y+9,x+12,y+3,color);
+  screen.fillCircle(x+6,y+11,1,color);break;
+ case Icon::Book:
+  screen.drawRect(x,y+1,13,11,color);
+  screen.drawFastVLine(x+6,y+1,11,color);break;
+ case Icon::Controls:
+  screen.drawRoundRect(x,y+1,13,11,2,color);
+  screen.drawFastHLine(x+3,y+8,7,color);break;
+ case Icon::Menu:
+  for(int i=0;i<3;++i)screen.drawFastHLine(x,y+2+i*4,12,color);
+  break;
+ }
+}
+
+void beginFrame(const char *title,Icon icon){
+ screen.startWrite();
+ screen.fillScreen(background);
+ screen.fillRect(0,0,screen.width(),headerHeight,header);
+ drawIcon(icon,7,5,accent);
+ screen.setTextColor(textColor);
+ screen.setTextWrap(false);
+ screen.setCursor(27,3);
+ screen.print(title);
+}
+
+void drawFooter(const char *help){
+ if(!help)return;
+ const int y=screen.height()-footerHeight;
+ screen.fillRect(0,y,screen.width(),footerHeight,header);
+ screen.setFont(&lgfx::fonts::Font0);
+ screen.setTextColor(accent);
+ screen.setTextWrap(false);
+ screen.setCursor(5,y+4);
+ screen.print(help);
+ screen.setFont(&lgfx::fonts::Font2);
+}
+
+void showScreenText(const char *title,const String &message,const char *help=nullptr){
+ if(!screenReady)return;
+ beginFrame(title,Icon::Controls);
+ screen.setClipRect(6,headerHeight+4,screen.width()-12,
+                    screen.height()-headerHeight-4-(help?footerHeight:0));
+ screen.setTextWrap(true);
+ screen.setCursor(6,headerHeight+4);
+ screen.print(message);
+ screen.clearClipRect();
+ drawFooter(help);
+ screen.endWrite();
+}
+}
+
+void menu(const char *title,Icon icon,int count,int selected,MenuLabel label,const char *help){
+ if(!screenReady||count<=0||selected<0||selected>=count)return;
+ pendingText="";
+ pendingHelp=nullptr;
+ beginFrame(title,icon);
+ const int rows=(screen.height()-headerHeight-(help?footerHeight:0))/rowHeight;
+ const int first=std::min(selected/rows*rows,std::max(0,count-rows));
+ const int last=std::min(first+rows,count);
+ for(int i=first;i<last;++i){
+  const int y=headerHeight+(i-first)*rowHeight;
+  if(i==selected){
+   screen.fillRoundRect(3,y,screen.width()-9,rowHeight,4,highlight);
+   screen.fillTriangle(8,y+4,8,y+12,13,y+8,accent);
+  }
+  screen.setTextColor(textColor);
+  screen.setClipRect(18,y,screen.width()-29,rowHeight);
+  screen.setCursor(18,y);
+  screen.print(label(i));
+  screen.clearClipRect();
+ }
+ if(count>rows){
+  const int track=rows*rowHeight-4;
+  const int thumb=std::max(5,track*rows/count);
+  screen.fillRect(screen.width()-4,headerHeight+2,2,track,header);
+  screen.fillRect(screen.width()-4,headerHeight+2+(track-thumb)*first/(count-rows),2,thumb,accent);
+ }
+ drawFooter(help);
+ screen.endWrite();
+}
+
+void input(){
+ lastInput=millis();
+ if(screenReady&&!backlightOn){digitalWrite(38,HIGH);backlightOn=true;}
+}
+
+void update(const char *title){
+ if(!screenReady)return;
+ if(pendingText.length()){
+  showScreenText(title,pendingText,pendingHelp);
+  pendingText="";
+  pendingHelp=nullptr;
+ }
+ if(backlightOn&&timeoutSeconds&&millis()-lastInput>=uint32_t(timeoutSeconds)*1000){
+  digitalWrite(38,LOW);
+  backlightOn=false;
+ }
+}
+
+void beginScreen(){
+ auto bus=screenBus.config();
+ bus.spi_host=SPI3_HOST;
+ bus.spi_mode=0;
+ bus.freq_write=40000000;
+ bus.pin_sclk=36;
+ bus.pin_mosi=35;
+ bus.pin_miso=-1;
+ bus.pin_dc=34;
+ screenBus.config(bus);
+ screenPanel.setBus(&screenBus);
+ auto panel=screenPanel.config();
+ panel.pin_cs=37;
+ panel.pin_rst=33;
+ panel.panel_width=135;
+ panel.panel_height=240;
+ panel.offset_x=52;
+ panel.offset_y=40;
+ panel.readable=false;
+ panel.invert=true;
+ screenPanel.config(panel);
+ screen.setPanel(&screenPanel);
+ screenReady=screen.init();
+ if(!screenReady)return;
+ screen.setRotation(1);
+ screen.setFont(&lgfx::fonts::Font2);
+ showScreenText("Cardputer ADV","Starting...");
+ input();
+}
+}
+#endif
 namespace {
 fs::SDFS &card=SD;
 DuplexAudio output(41,43,42);
@@ -175,7 +337,7 @@ struct SynthSession {
 std::unique_ptr<SynthSession> synth;
 Synth::Preset synthPreset=Synth::Preset::Piano;
 constexpr const char *synthPresets[]={"Piano","Chiptune","Drums","Bass","Glass bells","Grand piano","NES chip","Analog brass","Electric piano","Drawbar organ"};
-constexpr const char *synthHelp="Alt 1 piano, 2 chiptune, 3 drums, 4 bass, 5 glass bells, 6 grand piano, 7 NES chip, 8 analog brass, 9 electric piano, 0 drawbar organ. Alt Z, X, C, V, or M starts a backing loop for the preset. Alt Backspace or Tilde stops it. Play any notes over the loop. Alt R reads the preset. Hold Control for sustain, Shift flanger, Function tremolo, or Option arpeggio. Alt brackets adjust quiet sound boost. Alt Space stops speech. Alt comma and slash adjust speech rate. Alt semicolon and period adjust both volumes. Add Function to adjust speech volume alone. Alt Q goes home.";
+constexpr const char *synthHelp="Option 1 piano, 2 chiptune, 3 drums, 4 bass, 5 glass bells, 6 grand piano, 7 NES chip, 8 analog brass, 9 electric piano, 0 drawbar organ. Option Z, X, C, V, or M starts a backing loop for the preset. Option Backspace or Tilde stops it. Play any notes over the loop. Option Function R reads the preset. Hold Control for sustain, Shift flanger, Function tremolo, or Option arpeggio. Option brackets adjust quiet sound boost. Option Space stops speech. Alt minus and equals adjust synth volume. Alt brackets adjust speech volume. Alt Q goes home.";
 int synthBoost=2;
 bool synthSustain=false,synthFlange=false,synthTremolo=false,synthArpeggio=false;
 float synthGain=0;
@@ -215,7 +377,11 @@ size_t playPalaceAudio(unsigned rate,const uint8_t* pcm,size_t bytes){
 }
 #endif
 SettingsStore settings(card);
-enum class Page { Home, Learn, Record, Files, FileActions, FileName, ConfirmDelete, Copying, Play, Settings, WifiScan, WifiList, Password, TimeZone, ManualTime, TimePicker, SpeechRate, SpeechVolume, MicGain, MediaVolume, Hid, UsbSDMode, UsbSD, PlayPalace, SettingsCategories, Synth, KeyMap, NvdaRemote, Text, VoiceChanger, Bible, RegisteredApp };
+enum class Page { Home, Learn, Record, Files, FileActions, FileName, ConfirmDelete, Copying, Play, Settings, WifiScan, WifiList, Password, TimeZone, ManualTime, TimePicker, SpeechRate, SpeechVolume, MicGain, MediaVolume, Hid, UsbSDMode, UsbSD, PlayPalace, SettingsCategories, Synth, KeyMap, NvdaRemote, Text, VoiceChanger, Bible, RegisteredApp
+#ifdef UNIFIED_SCREEN
+ ,BacklightTimeout
+#endif
+};
 Page page=Page::Home;
 bool ready=false,speechLoaded=false,sdReady=false,speaking=false,playing=false,paused=false;
 File textFile;
@@ -398,12 +564,58 @@ struct SpeechBench {
 } speechBench;
 #endif
 #endif
-const char *options[]={"Wi-Fi networks","Disconnect Wi-Fi","Set time from network","Time zone","Type date and time","Choose date and time","Speech rate","Speech volume","Media volume","Microphone gain","Internal flash space","SD card space","Key Map Manager"};
+const char *options[]={"Wi-Fi networks","Disconnect Wi-Fi","Set time from network","Time zone","Type date and time","Choose date and time","Speech rate","Speech volume","Media volume","Microphone gain","Internal flash space","SD card space","Key Map Manager"
+#ifdef UNIFIED_SCREEN
+ ,"Backlight timeout"
+#endif
+};
 constexpr struct SettingsCategory { const char *name; int first, count; } categories[]={
  {"Network",0,2},{"Date and time",2,4},{"Audio",6,3},{"Recording",9,1},{"Storage",10,2},{"Keyboard",12,1}
+#ifdef UNIFIED_SCREEN
+ ,{"Display",13,1}
+#endif
 };
 constexpr int categoryCount=sizeof(categories)/sizeof(categories[0]);
 int category=0;
+#ifdef UNIFIED_SCREEN
+constexpr int backlightSetting=13;
+constexpr struct BacklightChoice { int seconds; const char *label; } backlightChoices[]={
+ {0,"Always on"},{15,"15 seconds"},{30,"30 seconds"},{60,"1 minute"},{120,"2 minutes"},{300,"5 minutes"}
+};
+const char *screenTitle(){
+ switch(page){
+ case Page::Home:return "Home";
+ case Page::Learn:return "Keyboard learning";
+ case Page::Record:return "Voice recorder";
+ case Page::Files:case Page::FileName:case Page::Copying:case Page::ConfirmDelete:return "File manager";
+ case Page::FileActions:return "File actions";
+ case Page::Play:return "Media player";
+ case Page::Text:return "Text reader";
+ case Page::SettingsCategories:return "Settings";
+ case Page::Settings:return categories[category].name;
+ case Page::WifiScan:case Page::WifiList:case Page::Password:return "Wi-Fi";
+ case Page::TimeZone:return "Time zone";
+ case Page::ManualTime:case Page::TimePicker:return "Set date and time";
+ case Page::SpeechRate:return "Speech rate";
+ case Page::SpeechVolume:return "Speech volume";
+ case Page::MediaVolume:return "Media volume";
+ case Page::MicGain:return "Microphone gain";
+ case Page::Hid:return "Bluetooth and USB keyboard";
+ case Page::UsbSDMode:case Page::UsbSD:return "SD card sharing";
+ case Page::PlayPalace:return "PlayPalace";
+ case Page::Synth:return "Synthesizer";
+ case Page::KeyMap:return "Key Map Manager";
+ case Page::NvdaRemote:return "NVDA Remote";
+ case Page::VoiceChanger:return "Voice changer";
+ case Page::Bible:return "Bible";
+ case Page::BacklightTimeout:return "Backlight timeout";
+#ifdef UNIFIED_CUSTOM_BUILD
+ case Page::RegisteredApp:return home[registeredSelection];
+#endif
+ default:return "Cardputer ADV";
+ }
+}
+#endif
 const char *fileActions[]={"Rename selected","Delete selected","Copy selected","Paste copied file","Create folder","Refresh SD card","Cancel"};
 const char *zoneNames[]={"Alberta Time","Pacific time","Central time","Eastern time","UTC","Mountain time, United States"};
 const char *zoneValues[]={"ABT6","PST8PDT,M3.2.0,M11.1.0","CST6CDT,M3.2.0,M11.1.0","EST5EDT,M3.2.0,M11.1.0","UTC0","MST7MDT,M3.2.0,M11.1.0"};
@@ -457,6 +669,9 @@ int daysInMonth(int year,int month){static const int days[]={31,28,31,30,31,30,3
 
 void say(const String &message,bool sensitive,bool interrupt) {
  if(!ready || !message.length())return;
+#ifdef UNIFIED_SCREEN
+ if(!sensitive&&unifiedScreen::screenReady)unifiedScreen::pendingText=message;
+#endif
  {
   SpeechLock lock;
   if(speechLoaded){
@@ -533,7 +748,7 @@ void setMediaGain(){
 void adjustMediaVolume(int delta){
  mediaVolume=constrain(mediaVolume+delta,0,100);
  setMediaGain();
- settings.putInt("mediaVol",mediaVolume);
+ settings.putInt("mediaVol",mediaVolume,page==Page::PlayPalace||page==Page::UsbSD);
  say("Media volume "+String(mediaVolume)+" percent");
 }
 void hidTone(bool high);
@@ -541,11 +756,11 @@ void stopSpeech();
 bool startPlayback(const String &path,size_t offset=0);
 #ifdef CARDPUTER_BIBLE_APP
 bool closeBible();
-constexpr const char* bibleHelp="Control locks or unlocks the keyboard. Minus and Equals adjust media volume. B opens the book list. C opens the chapter list. Hold Up or Down to skim a list. In books, press the first letter or number. In chapters, press a digit to jump, such as 5 for chapter 50. Enter selects. M saves a bookmark. Alt M plays the bookmark. V chooses a version. Space plays or pauses. In the player, Up goes to the next chapter and Down goes to the previous chapter. Left and right seek near a quiet gap. Brackets change speed. Backspace goes back. Alt Q goes home.";
+constexpr const char* bibleHelp="Control locks or unlocks the keyboard. Minus and Equals adjust media volume. B opens the book list. C opens the chapter list. Hold Up or Down to skim a list. In books, press the first letter or number. In chapters, press a digit to jump, such as 5 for chapter 50. Enter selects. M saves a bookmark. Option M plays the bookmark. V chooses a version. Space plays or pauses. In the player, Up goes to the next chapter and Down goes to the previous chapter. Left and right seek near a quiet gap. Brackets change speed. Backspace goes back. Alt Q goes home.";
 #endif
 
 #ifdef CARDPUTER_VOICE_CHANGER
-constexpr char voiceHelp[]="Numbers select voices. 1 robot, 2 flanger, 3 deep voice, 4 high voice, 5 echo, 6 tremolo, 7 radio, 8 fuzz, 9 chorus, 0 whisper. Enter starts recording. Speak after the beep. Press any key to stop and play. Space or apostrophe replays in the selected voice. M toggles live monitoring for headphones. Alt left and right bracket change microphone gain. Alt Backspace stops audio. Backspace returns home.";
+constexpr char voiceHelp[]="Numbers select voices. 1 robot, 2 flanger, 3 deep voice, 4 high voice, 5 echo, 6 tremolo, 7 radio, 8 fuzz, 9 chorus, 0 whisper. Enter starts recording. Speak after the beep. Press any key to stop and play. Space or apostrophe replays in the selected voice. M toggles live monitoring for headphones. Left and right brackets change microphone gain. Option Backspace stops audio. Backspace returns home.";
 enum class VoiceMode { Idle, MonitorStarting, Monitoring, RecordStarting, Recording, Playback, Draining };
 struct VoiceSession {
  VoiceEffect effect;
@@ -869,6 +1084,9 @@ int menuCount(){
  case Page::FileActions:return sizeof(fileActions)/sizeof(fileActions[0]);
  case Page::Files:return int(entries.size()+fileAppCount);
  case Page::WifiList:return int(networks.size());
+#ifdef UNIFIED_SCREEN
+ case Page::BacklightTimeout:return std::size(backlightChoices);
+#endif
  default:return 0;
  }
 }
@@ -885,6 +1103,62 @@ void moveMenu(char key,bool repeated=false){
  else if(key=='.')selection=selection==last&&!repeated?first:std::min(last,selection+1);
  if(!repeated||selection!=previous)focus();
 }
+#ifdef UNIFIED_SCREEN
+String menuLabel(int index){
+ switch(page){
+ case Page::Home:return home[index];
+ case Page::SettingsCategories:return categories[index].name;
+ case Page::Settings:return options[categories[category].first+index];
+ case Page::TimeZone:return zoneNames[index];
+ case Page::FileActions:return fileActions[index];
+ case Page::Files:
+  if(index<fileAppCount)return "Bluetooth keyboard and mouse";
+  return entries[index-fileAppCount].name+(entries[index-fileAppCount].dir?"/":"");
+ case Page::WifiList:return networks[index];
+ case Page::BacklightTimeout:return backlightChoices[index].label;
+ default:return "";
+ }
+}
+
+void drawMenu(const char *help=nullptr){
+ using unifiedScreen::Icon;
+ Icon icon=Icon::Menu;
+ switch(page){
+ case Page::SettingsCategories:case Page::Settings:case Page::BacklightTimeout:case Page::TimeZone:
+  icon=Icon::Settings;break;
+ case Page::Files:case Page::FileActions:icon=Icon::Folder;break;
+ case Page::WifiList:icon=Icon::Radio;break;
+ default:break;
+ }
+ const int first=page==Page::Settings?categories[category].first:0;
+ unifiedScreen::menu(screenTitle(),icon,menuCount(),selection-first,menuLabel,help);
+}
+
+const char *appOpeningHelp(Page opened){
+ switch(opened){
+ case Page::Learn:return "Press any key to identify it   Alt+Q Home";
+ case Page::Record:return "Enter Record   Space Pause   Ctrl Preview";
+ case Page::Hid:return "Alt Layer   Opt+1-4 Slot   Opt+M Mouse";
+ case Page::Play:return "Space Pause   ; . Volume   Backspace Files";
+ case Page::Text:return "Enter Next   Space Reread   Opt+H Help";
+ case Page::KeyMap:return "Tap a key   Fn+Space Assign   Alt Layer";
+ case Page::Synth:return "Play keys   Opt+0-9 Preset   Opt+H Help";
+ case Page::VoiceChanger:return "1-0 Voice   Enter Record   Space Replay";
+ case Page::Bible:return "B Books   C Chapters   Space Play   Opt+H";
+ case Page::PlayPalace:return "; . Move   Enter Select   Alt+Q Home";
+ case Page::RegisteredApp:return "Alt+Q Home";
+ default:return nullptr;
+ }
+}
+
+void drawKeyMapChoices(){
+ if(unifiedScreen::pendingText.isEmpty())return;
+ unifiedScreen::menu("Choose a key assignment",unifiedScreen::Icon::Controls,
+   keyMapManager.choiceCount(),keyMapManager.selectedChoice(),
+   [](int index)->String{return keyMapManager.choiceLabel(index);},
+   "Type to search   Fn+; / Fn+. Move");
+}
+#endif
 void focus(const String &prefix) {
  switch(page){
  case Page::Home:say(String(home[selection])+", "+String(selection+1)+" of "+String(homeCount));break;
@@ -905,8 +1179,14 @@ void focus(const String &prefix) {
    say(network+state+", "+String(selection+1)+" of "+String(networks.size()));
   }
   break;
+#ifdef UNIFIED_SCREEN
+ case Page::BacklightTimeout:say(backlightChoices[selection].label);break;
+#endif
  default:break;
  }
+#ifdef UNIFIED_SCREEN
+ drawMenu(page==Page::BacklightTimeout?"; . Move  Enter Save  Backspace Back":nullptr);
+#endif
 }
 #ifdef CARDPUTER_KEYBOARD_APP
 void suppressHid(){
@@ -982,6 +1262,7 @@ void homePage(){
 #ifdef CARDPUTER_SD_SHARING
 void leaveUsbSD(){
  if(wifiSDEnabled)stopWifiSD();else stopUsbSD();
+ settings.flushDeferred();
  page=Page::Home;selection=sdSharingHomeIndex;
  focus("SD sharing ended. ");
 }
@@ -997,6 +1278,14 @@ void announceWifiSD(){
  for(const char *p=wifiSDCode;*p;++p){message+=*p;message+=' ';}
  say(message+". Alt Q stops sharing");
 }
+#ifdef UNIFIED_SCREEN
+void drawSharingMenu(const char *help=nullptr){
+ unifiedScreen::menu("SD card sharing",unifiedScreen::Icon::Folder,wifiSDEnabled?3:2,
+   selection,[](int index)->String{
+    return index==0?"USB read only":index==1?"USB read and write":"Wi-Fi read and write";
+   },help);
+}
+#endif
 void openWifiSD(){
  if(!sdReady){say("SD card unavailable");return;}
  if(WiFi.status()!=WL_CONNECTED){
@@ -1034,7 +1323,7 @@ void saveHidMode(){
 void selectHid(int slot,bool pair){
  if(slot==4&&(!usbReady||!unifiedUSBConnected())){say("Connect a USB data host first");return;}
  if(slot!=4&&!pair&&settings.getString(slotKeys[slot-1]).isEmpty()){
-  say("Slot "+String(slot)+" is empty. Hold Alt and "+String(slot)+" to pair");return;
+  say("Slot "+String(slot)+" is empty. Hold Option and "+String(slot)+" to pair");return;
  }
  suppressHid();stopKeyboardSlot();lastConnected=false;
  loadHidMode(slot);
@@ -1113,7 +1402,12 @@ void seekAudio(bool forward){
 }
 int readBatteryPercent(int &mv){
  int samples[15];
- for(auto &sample:samples)sample=analogReadMilliVolts(10)*2;
+ // Sample across several scheduler ticks so a brief load transient
+ // is less likely to affect the entire median window.
+ for(size_t i=0;i<std::size(samples);++i){
+  if(i)delay(1);
+  samples[i]=analogReadMilliVolts(10)*2;
+ }
  std::sort(std::begin(samples),std::end(samples));
  mv=samples[7];
  if(mv<2500||mv>5000)return -1;
@@ -1136,16 +1430,17 @@ void announceBattery(){
  int percent=readBatteryPercent(mv);
  if(percent<0){say("Battery level unavailable");return;}
  if(unifiedUSBConnected()){
-  say("USB connected. Unplug for a battery estimate. Voltage "+String(mv)+" millivolts");
+  say("USB connected. Battery voltage "+String(mv)+" millivolts");
   return;
  }
- // USB wall chargers cannot be detected reliably. Avoid calling a high
- // terminal voltage a full battery and round away small ADC variations.
- if(percent>=98){
-  say("Battery voltage is high, "+String(mv)+" millivolts. Unplug for a reliable estimate");
+ // Above the normal full-cell range, report voltage only. A healthy
+ // unplugged cell near 4.2 V can still be reported as approximately full.
+ if(mv>4250){
+  say("Battery voltage "+String(mv)+" millivolts");
   return;
  }
- say("Battery approximately "+String(((percent+2)/5)*5)+" percent. External power can raise this estimate");
+ String level=percent>0&&percent<3?"under 5":String(((percent+2)/5)*5);
+ say("Battery approximately "+level+" percent");
 }
 String storageSize(uint64_t bytes){
  const double mib=bytes/1048576.0;
@@ -1216,7 +1511,7 @@ void stopSpeech(){
 bool global(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State&s){
  using namespace globalShortcuts;
  const Key key{e.row,e.col,e.down,s.opt,s.fn,s.alt,s.ctrl,s.shift};
- Command c=page==Page::Synth?routeSynth(key):route(key);
+ Command c=route(key);
  if(c==Command::None)return false;
 #ifdef CARDPUTER_KEYBOARD_APP
  if(page==Page::Hid&&c!=Command::Home)suppressHid();
@@ -1230,6 +1525,9 @@ bool global(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State&s){
  case Command::Repeat:{String previous=lastSpoken;bool sensitive=lastSensitive;say(previous,sensitive);break;}
  case Command::Help:
   if(page==Page::Text)say(textHelp);
+#ifdef CARDPUTER_SYNTH_APP
+  else if(page==Page::Synth)say(synthHelp);
+#endif
 #ifdef CARDPUTER_BIBLE_APP
   else if(page==Page::Bible)say(bibleHelp);
 #endif
@@ -1238,12 +1536,14 @@ bool global(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State&s){
 #endif
   else if(page==Page::KeyMap)say(keyMapHelp);
   else if(menuCount()||page==Page::WifiList)say("Semicolon moves up, period moves down. Hold to repeat. Comma first, slash last. Space reads the selection. Enter opens. Function backtick goes back. Control stops speech. Alt Q goes home");
-  else say("Alt comma and slash change speech rate. Alt semicolon and period change speech and media volume. Option space stops speech. Option R repeats. Alt Q goes home. Alt B battery. Alt T time. Alt N network");
+  else say("Alt comma and slash change speech rate. Alt minus and equals change media volume. Alt left and right bracket change speech volume. Option space stops speech. Option R repeats. Alt Q goes home. Alt B battery. Alt T time. Alt N network");
   break;
  case Command::RateDown:case Command::RateUp:
   rate=constrain(rate+(c==Command::RateUp?10:-10),100,maxSpeechRate);{SpeechLock lock;if(speechLoaded)rate=configureSpeechRate(rate);}settings.putInt("rate",rate,page==Page::PlayPalace);say(speechRateLabel());break;
  case Command::VolumeUp:case Command::VolumeDown:
-  volume=constrain(volume+(c==Command::VolumeUp?5:-5),5,100);{SpeechLock lock;if(speechLoaded)reader.setGain(volume*speechGainPerPercent);}settings.putInt("volume",volume,page==Page::PlayPalace);say("Speech volume "+String(volume)+" percent");break;
+  volume=constrain(volume+(c==Command::VolumeUp?5:-5),5,100);{SpeechLock lock;if(speechLoaded)reader.setGain(volume*speechGainPerPercent);}settings.putInt("volume",volume,page==Page::PlayPalace||page==Page::UsbSD);say("Speech volume "+String(volume)+" percent");break;
+ case Command::MediaUp:case Command::MediaDown:
+  adjustMediaVolume(c==Command::MediaUp?5:-5);break;
  case Command::CombinedVolumeUp:case Command::CombinedVolumeDown:{
   const int delta=c==Command::CombinedVolumeUp?5:-5;
   volume=constrain(volume+delta,5,100);
@@ -1271,7 +1571,7 @@ void openSelected(){
   if(paired)pendingHidSlot=hidSlot;
   say(String(paired?"Reconnecting Bluetooth slot "+String(hidSlot):String("Bluetooth keyboard"))
       + (hidMouse?". Mouse mode. ":hidAlternate?". Alternate layer. ":". Regular layer. ")
-      + "Tap Alt to switch layers. Alt 1 through 3 selects a slot. Hold the number to pair. Alt 4 selects USB. Option M switches mouse mode. Alt Q returns home");
+      + "Tap Alt to switch layers. Option 1 through 3 selects a slot. Hold the number to pair. Option 4 selects USB. Option M switches mouse mode. Alt Q returns home");
   return;
  }
 #endif
@@ -1302,7 +1602,7 @@ void openSelected(){
  recordingPlayback=!compressedPlaying()&&path.startsWith("/Recordings/");
  if(recordingPlayback){stopSpeech();hidTone(true);}
  else say("Playing "+e.name+". Space pauses. Semicolon and period adjust media volume."
-          +(compressedPlaying()?String(" Alt F toggles bass cut. Alt L toggles quiet boost."):String())+" Backspace returns to files");
+          +(compressedPlaying()?String(" Option F toggles bass cut. Option L toggles quiet boost."):String())+" Backspace returns to files");
 }
 bool startPlayback(const String &path,size_t offset){
  if(playing||compressedPlaying()||player)stopMedia();
@@ -1519,8 +1819,14 @@ void scanWifi(){
 void handleSynth(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
  const unsigned key=e.row*14+e.col;
  if(!e.down){SpeechLock lock;synth->live.noteOff(key);return;}
- if(s.alt){
-  if(s.opt||s.ctrl||s.fn)return;
+ if(s.alt)return;
+ const bool arrow=(e.row==3&&e.col>=10&&e.col<=12)||(e.row==2&&e.col==11);
+ if(s.opt&&!arrow){
+  if(s.ctrl||s.shift)return;
+  if(s.fn){
+   if(e.row==1&&e.col==4)say(synthPresets[int(synthPreset)]);
+   return;
+  }
   constexpr char loopKeys[]="zxcvm";
   static_assert(sizeof(loopKeys)-1==SynthLoop::count);
   const char *loopKey=std::find(loopKeys,loopKeys+SynthLoop::count,keys::plain[e.row][e.col]);
@@ -1529,7 +1835,6 @@ void handleSynth(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State 
    say("Backing loop stopped.");
    return;
   }
-  if(s.shift)return;
   if(loopKey!=loopKeys+SynthLoop::count){
    const unsigned loop=loopKey-loopKeys;
    {SpeechLock lock;synth->loop.start(synthPreset,loop);}
@@ -1543,10 +1848,6 @@ void handleSynth(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State 
    synthBoost=constrain(synthBoost+(e.col==12?1:-1),0,Synth::maxBoost);
    settings.putInt("synthBoost",synthBoost,true);
    say(String("Quiet sound boost, ")+String(synthBoost)+" of "+String(Synth::maxBoost));
-  }else if(e.row==2&&e.col==7){
-   say(String(synthPresets[int(synthPreset)])+". "+synthHelp);
-  }else if(e.row==1&&e.col==4){
-   say(synthPresets[int(synthPreset)]);
   }
   return;
  }
@@ -1639,6 +1940,9 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
  if(page==Page::KeyMap){
   if(e.down&&global(e,s)){keyMapManager.cancelHold();return;}
   keyMapManager.key(e,s,millis(),say);
+#ifdef UNIFIED_SCREEN
+  drawKeyMapChoices();
+#endif
   return;
  }
 #ifdef CARDPUTER_KEYBOARD_APP
@@ -1679,7 +1983,7 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
 #endif
 #ifdef CARDPUTER_KEYBOARD_APP
  if(page==Page::Hid&&e.row==0&&e.col>=1&&e.col<=4){
-  if(e.down&&s.alt){
+  if(e.down&&s.opt&&!s.alt&&!s.fn&&!s.ctrl&&!s.shift){
    suppressHid();hidChord=e.col;hidChordStarted=millis();hidChordHandled=false;
    return;
   }
@@ -1698,6 +2002,7 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
    if(wifiSDEnabled&&wifiSD)announceWifiSD();
    else say(!unifiedUSBConnected()?"Connect a USB data cable":usbWritable?"SD card shared with write access":"SD card shared read only");
   }else if(e.row==3&&e.col==0)stopSpeech();
+  else if(s.alt&&e.row<=1&&(e.col==11||e.col==12))global(e,s);
   return;
  }
 #endif
@@ -1706,7 +2011,8 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
 #endif
 #ifdef CARDPUTER_VOICE_CHANGER
  if(page==Page::VoiceChanger&&(voiceMode==VoiceMode::Recording||voiceMode==VoiceMode::RecordStarting)){
-  playVoice();
+  if(s.alt&&e.row<=1&&(e.col==11||e.col==12))global(e,s);
+  else playVoice();
   return;
  }
 #endif
@@ -1721,17 +2027,18 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
  if(page==Page::VoiceChanger){
   const char key=keys::plain[e.row][e.col];
   const bool monitor=voiceMode==VoiceMode::MonitorStarting||voiceMode==VoiceMode::Monitoring;
-  if(s.alt&&!s.fn&&!s.opt&&!s.ctrl&&!s.shift){
-   if(key=='h')say(voiceHelp);
-   else if(e.row==0&&e.col==13){stopVoice();say("Stopped");}
-   else if(key=='['||key==']'){
-    adjustMicGain(key=='['?-3:3);
-    if(monitor)voiceSession->inputGain=recording::captureGain(micGainDb);
-   }
+  if(!s.alt&&!s.fn&&!s.opt&&!s.ctrl&&!s.shift&&(key=='['||key==']')){
+   adjustMicGain(key=='['?-3:3);
+   if(monitor)voiceSession->inputGain=recording::captureGain(micGainDb);
+   return;
+  }
+  if(s.opt&&!s.fn&&!s.alt&&!s.ctrl&&!s.shift&&key==8){
+   stopVoice();say("Stopped");
    return;
   }
   if(s.fn&&e.row==0&&e.col==0){homePage();return;}
   if(s.fn||s.alt||s.opt||s.ctrl||s.shift)return;
+  if(key=='h'){say(voiceHelp);return;}
   if(e.row==0&&e.col==13){homePage();return;}
   if(key>='0'&&key<='9'){
    voicePreset=static_cast<VoiceEffect::Preset>(key=='0'?9:key-'1');
@@ -1758,12 +2065,12 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
 #endif
 #ifdef UNIFIED_PLAYPALACE
  if(page==Page::PlayPalace){
-  if(s.opt)return;
+  if(s.alt)return;
   const char base=keys::plain[e.row][e.col];
   const char character=s.shift?keys::shifted[e.row][e.col]:base;
   const int function=s.fn&&e.row==0&&e.col>=1&&e.col<=12?e.col:0;
   if(base>=8&&playpalace::readingText())flushSpeech();
-  playpalace::key({base,character,function,s.fn,s.shift,s.ctrl,s.alt});
+  playpalace::key({base,character,function,s.fn,s.shift,s.ctrl,s.opt});
   return;
  }
  if(page==Page::Home&&selection==firstOnlineHomeIndex&&e.row==2&&e.col==13&&!s.fn){
@@ -1788,7 +2095,7 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
 #ifdef CARDPUTER_VOICE_CHANGER
  if(page==Page::Home&&selection==voiceHomeIndex&&e.row==2&&e.col==13&&!s.fn){
   page=Page::VoiceChanger;
-  say(String("Voice changer. ")+VoiceEffect::names[voicePreset]+". Numbers select a voice. Enter to record. Space or apostrophe replays. M for headphone monitoring. Alt H for help.");
+  say(String("Voice changer. ")+VoiceEffect::names[voicePreset]+". Numbers select a voice. Enter to record. Space or apostrophe replays. M for headphone monitoring. H for help.");
   return;
  }
 #endif
@@ -1805,7 +2112,7 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
   }
   if(!synth){say("Not enough memory for the synthesizer.");return;}
   page=Page::Synth;
-  say(String("Synthesizer. ")+synthPresets[int(synthPreset)]+". Play the keys. Alt with a digit selects a preset. Alt Z starts its first backing loop. Alt H reads controls.");
+  say(String("Synthesizer. ")+synthPresets[int(synthPreset)]+". Play the keys. Option with a digit selects a preset. Option Z starts its first backing loop. Option H reads controls.");
   return;
  }
 #endif
@@ -1817,6 +2124,9 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
   else if(e.col==11&&(e.row==2||e.row==3)){
    selection=wifiSDEnabled?(selection+(e.row==2?2:1))%3:1-selection;
    say(selection==0?"USB read only":selection==1?"USB read and write":"Wi-Fi read and write");
+#ifdef UNIFIED_SCREEN
+   drawSharingMenu();
+#endif
   }else if(e.row==2&&e.col==13){
    if(wifiSDEnabled&&selection==2)openWifiSD();else openUsbSD(selection==1);
   }
@@ -1833,6 +2143,9 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
  case Page::SpeechVolume:setting=7;break;
  case Page::MediaVolume:setting=8;break;
  case Page::MicGain:setting=9;break;
+#ifdef UNIFIED_SCREEN
+ case Page::BacklightTimeout:setting=backlightSetting;break;
+#endif
  default:break;
  }
  if((escape||backspace)&&setting>=0){page=Page::Settings;selection=setting;focus();return;}
@@ -1932,12 +2245,12 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
  }
  if(page==Page::Play){
 #ifdef CARDPUTER_COMPRESSED_MEDIA
-  if(compressedAudio&&s.alt&&!s.fn&&!s.ctrl&&!s.opt&&!s.shift&&keys::plain[e.row][e.col]=='f'){
+  if(compressedAudio&&s.opt&&!s.fn&&!s.ctrl&&!s.alt&&!s.shift&&keys::plain[e.row][e.col]=='f'){
    mediaBassCut=!mediaBassCut;
    settings.putBool("mediaBassCut",mediaBassCut);
    say(mediaBassCut?"Music bass cut on":"Music bass cut off");
   }
-  else if(compressedAudio&&s.alt&&!s.fn&&!s.ctrl&&!s.opt&&!s.shift&&keys::plain[e.row][e.col]=='l'){
+  else if(compressedAudio&&s.opt&&!s.fn&&!s.ctrl&&!s.alt&&!s.shift&&keys::plain[e.row][e.col]=='l'){
    mediaQuietBoost=!mediaQuietBoost;
    settings.putInt("mediaBoost",mediaQuietBoost,true);
    say(mediaQuietBoost?"Music quiet boost on":"Music quiet boost off");
@@ -2021,6 +2334,9 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
   case sdSharingHomeIndex:
    page=Page::UsbSDMode;selection=0;
    say(wifiSDEnabled?"SD card sharing. USB read only. Press period for USB read and write, then Wi-Fi read and write. Enter starts sharing":"USB SD card. Read only. Period switches to read and write. Enter starts sharing");
+#ifdef UNIFIED_SCREEN
+   drawSharingMenu("; . Move   Enter Start   Backspace Home");
+#endif
    break;
 #endif
   }
@@ -2066,8 +2382,31 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
  if(page==Page::SettingsCategories){
   category=selection;page=Page::Settings;selection=categories[category].first;
   say(String(categories[category].name)+". "+options[selection]+", 1 of "+String(categories[category].count));
+#ifdef UNIFIED_SCREEN
+  drawMenu();
+#endif
   return;
  }
+#ifdef UNIFIED_SCREEN
+ if(page==Page::Settings&&selection==backlightSetting){
+  page=Page::BacklightTimeout;
+  selection=0;
+  for(int i=0;i<menuCount();++i)
+   if(backlightChoices[i].seconds==unifiedScreen::timeoutSeconds)selection=i;
+  focus();
+  return;
+ }
+ if(page==Page::BacklightTimeout){
+  const BacklightChoice &choice=backlightChoices[selection];
+  unifiedScreen::timeoutSeconds=choice.seconds;
+  settings.putInt("backlightSec",choice.seconds);
+  page=Page::Settings;
+  selection=backlightSetting;
+  say(String("Backlight timeout: ")+choice.label);
+  drawMenu();
+  return;
+ }
+#endif
  if(page==Page::Settings&&selection==12){
   keyMapManager.open(remoteKeyMap);altTapArmed=false;page=Page::KeyMap;
   say(String("Key Map Manager. Regular layer. ")+keyMapHelp);return;
@@ -2082,6 +2421,9 @@ void setup(){
  startupStage=1;
 #endif
  pinMode(38,OUTPUT);digitalWrite(38,LOW);pinMode(37,OUTPUT);digitalWrite(37,HIGH);Wire.begin(8,9);
+#ifdef UNIFIED_SCREEN
+ unifiedScreen::beginScreen();
+#endif
  const uint8_t regs[][2]={{0,0x80},{1,0xb5},{2,0x18},{0x0d,1},{0x12,0},{0x13,0x10},{0x32,0xbf},{0x37,8}};
  for(auto&r:regs){
   Wire.beginTransmission(0x18);Wire.write(r[0]);Wire.write(r[1]);
@@ -2142,6 +2484,12 @@ void setup(){
  startupStage=4;
 #endif
  settings.begin(sdReady);rate=constrain(settings.getInt("rate",175),100,maxSpeechRate);volume=constrain(settings.getInt("volume",65),5,100);mediaVolume=constrain(settings.getInt("mediaVol",75),0,100);micGainDb=constrain(settings.getInt("micGain",0),-24,24);timezoneIndex=constrain(settings.getInt("timezone",0),0,zoneCount-1);applyTimezone();lastKnownTime=strtoll(settings.getString("lastEpoch").c_str(),nullptr,10);
+#ifdef UNIFIED_SCREEN
+ const int savedTimeout=settings.getInt("backlightSec",0);
+ for(const auto &choice:backlightChoices)
+  if(choice.seconds==savedTimeout)unifiedScreen::timeoutSeconds=savedTimeout;
+ unifiedScreen::input();
+#endif
 #ifdef CARDPUTER_SYNTH_APP
  synthBoost=constrain(settings.getInt("synthBoost",2),0,Synth::maxBoost);
 #endif
@@ -2159,20 +2507,45 @@ void setup(){
  startupStage=5;Serial.printf("UF_READY keyboard=%d sd=%d heap=%u reset=%d\n",keyboardInitialized,sdReady,ESP.getFreeHeap(),int(esp_reset_reason()));
 #endif
  say("Cardputer ready. Home. Keyboard learning, 1 of "+String(homeCount));
+#ifdef UNIFIED_SCREEN
+ drawMenu();
+#endif
 }
 void loop(){
  static_assert(ARDUINO_RUNNING_CORE == 1, "Keep navigation on the speech mixer core");
  M5Cardputer.Keyboard.update();auto&s=M5Cardputer.Keyboard.keysState();
+#ifdef UNIFIED_SCREEN
+ if(!M5Cardputer.Keyboard.events().empty())unifiedScreen::input();
+#endif
  if(M5Cardputer.Keyboard.quitRequested()
 #ifdef CARDPUTER_BIBLE_APP
     &&!(page==Page::Bible&&bibleApp.keyboardLocked)
 #endif
  ){
+#ifdef UNIFIED_SCREEN
+  unifiedScreen::input();
+#endif
 #ifdef CARDPUTER_SD_SHARING
   if(page==Page::UsbSD)leaveUsbSD();else
 #endif
   homePage();
- }else for(auto e:M5Cardputer.Keyboard.events())handle(e,s);
+ }else for(auto e:M5Cardputer.Keyboard.events()){
+#ifdef UNIFIED_SCREEN
+  const Page previous=page;
+#endif
+  handle(e,s);
+#ifdef UNIFIED_SCREEN
+  if(page!=previous){
+   if(previous==Page::Home&&page==Page::Files&&sdReady&&menuCount()>0)
+    drawMenu("; . Move   Enter Open   M Actions");
+   else {
+    if(page==Page::Play&&unifiedScreen::pendingText.isEmpty())
+     unifiedScreen::pendingText="Playing recording";
+    if(unifiedScreen::pendingText.length())unifiedScreen::pendingHelp=appOpeningHelp(page);
+   }
+  }
+#endif
+ }
 #ifdef UNIFIED_CUSTOM_BUILD
  if(activeRegisteredApp&&activeRegisteredApp->tick)activeRegisteredApp->tick();
 #endif
@@ -2183,7 +2556,15 @@ void loop(){
   if(page==Page::Home)stopWifi();
  }
 #endif
- if(page==Page::KeyMap)keyMapManager.tick(M5Cardputer.Keyboard,millis(),say);
+ if(page==Page::KeyMap){
+#ifdef UNIFIED_SCREEN
+  const int choicesBefore=keyMapManager.choiceCount();
+#endif
+  keyMapManager.tick(M5Cardputer.Keyboard,millis(),say);
+#ifdef UNIFIED_SCREEN
+  if(!choicesBefore&&keyMapManager.choiceCount())drawKeyMapChoices();
+#endif
+ }
 #ifdef CARDPUTER_SYNTH_APP
  if(page==Page::Synth){
   SpeechLock lock;
@@ -2299,10 +2680,13 @@ void loop(){
  String pairedPeer;
  bool bleConnected=pollKeyboardSlot(pairedPeer);
  if(!speechLoaded&&!keyboardRadioRunning()&&(page==Page::Home||(page==Page::Hid&&hidUsb))){
-  if(resumeSpeech())say(page==Page::Home?"Home. Keyboard learning, 1 of "+String(homeCount):"USB keyboard selected");
+  if(resumeSpeech()){
+   if(page==Page::Home)focus("Home. ");
+   else say("USB keyboard selected");
+  }
  }
  if(page==Page::Hid){
-  if(hidChord>0&&hidChord<4&&!hidChordHandled&&s.alt&&millis()-hidChordStarted>=650){
+  if(hidChord>0&&hidChord<4&&!hidChordHandled&&s.opt&&millis()-hidChordStarted>=650){
    hidChordHandled=true;selectHid(hidChord,true);
   }
   if(pendingHidSlot&&!speaking){
@@ -2361,8 +2745,7 @@ void loop(){
   }
  }
 #else
- if(!speechLoaded&&page==Page::Home&&resumeSpeech())
-  say("Home. Keyboard learning, 1 of "+String(homeCount));
+ if(!speechLoaded&&page==Page::Home&&resumeSpeech())focus("Home. ");
 #endif
 #ifdef CARDPUTER_SD_SHARING
  if(wifiSDEnabled&&page==Page::UsbSD&&wifiSD){
@@ -2521,5 +2904,8 @@ void loop(){
   if(copyDone>=copyTotal){copyIn.close();copyOut.close();copyDestination="";captureBuffer.reset();page=Page::Files;loadDirectory();say("File copied");}
   else {size_t want=std::min(scratchBytes,copyTotal-copyDone);int count=copyIn.read(block,want);if(count<=0||copyOut.write(block,count)!=size_t(count)){cancelCopy();page=Page::Files;loadDirectory();say("Copy failed");}else copyDone+=count;}
  }
+#ifdef UNIFIED_SCREEN
+ unifiedScreen::update(screenTitle());
+#endif
  delay(1);
 }

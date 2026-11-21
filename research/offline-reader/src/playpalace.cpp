@@ -1,4 +1,5 @@
 #include "playpalace.h"
+#include "unified_screen.h"
 #include "playpalace_grid.h"
 #include "playpalace_sound.h"
 #include "playpalace_speech.h"
@@ -462,10 +463,29 @@ void simple(const char* type) {
     send(packet);
 }
 
+constexpr const char* signInOptions[] = {"Sign in", "Saved accounts", "Import desktop identities"};
+#ifdef UNIFIED_SCREEN
+void drawSignInMenu(const char* help = nullptr) {
+    using unifiedScreen::Icon;
+    if (screen == Screen::Home)
+        unifiedScreen::menu("PlayPalace", Icon::Menu, std::size(signInOptions), option,
+                            [](int index) -> String { return signInOptions[index]; }, help);
+    else if (screen == Screen::Saved)
+        unifiedScreen::menu("Saved accounts", Icon::Menu, accounts.size(), option,
+                            [](int index) -> String {
+                                const auto& account = accounts[index];
+                                return account.label.length() ? account.label : account.username;
+                            }, help);
+}
+#endif
+
 void home() {
     screen = Screen::Home;
     option = 0;
     say("PlayPalace. Sign in. Semicolon moves up. Period moves down. Enter selects");
+#ifdef UNIFIED_SCREEN
+    drawSignInMenu("; . Move   Enter Select   Alt+Q Home");
+#endif
 }
 
 void scheduleConnection(uint32_t delay = 0) {
@@ -649,11 +669,23 @@ void line(String message, const String& buffer, bool silent = false) {
         queueAnnouncement(history.back().text);
 }
 
-void focusMenu(bool immediate = false) {
-    menuSpeech = items.empty() ? String("No game menu") :
+String menuFocusLabel() {
+    return items.empty() ? String("No game menu") :
         items[selected].text + ", " + String(selected + 1) + " of " + String(items.size());
+}
+#ifdef UNIFIED_SCREEN
+void drawGameMenu() {
+    unifiedScreen::menu("PlayPalace", unifiedScreen::Icon::Menu, items.size(), selected,
+                        [](int index) -> String { return items[index].text; });
+}
+#endif
+void focusMenu(bool immediate = false) {
+    menuSpeech = menuFocusLabel();
     if (immediate) {
         say(menuSpeech);
+#ifdef UNIFIED_SCREEN
+        drawGameMenu();
+#endif
         menuSpeech = "";
     }
 }
@@ -738,6 +770,9 @@ void updateMenu(JsonObjectConst packet) {
     waitingForMenu = false;
     retryUntil = 0;
     if (pane == Pane::Game && !items.empty()) {
+#ifdef UNIFIED_SCREEN
+        drawGameMenu();
+#endif
         if (startReading) {
             String text = prompt;
             for (const auto& item : items) {
@@ -839,7 +874,7 @@ void receive(const uint8_t* text, size_t length) {
         documentId = packet["dialog_id"] | "";
         entry = packet["content"] | "";
         queueAnnouncement(String(packet["prompt"] | "Edit document") +
-            ". Alt R reads the text, Shift Enter inserts a line, Enter saves, Escape cancels");
+            ". Option E reads the text, Shift Enter inserts a line, Enter saves, Escape cancels");
     } else if (type == "tutorial_prompt" && signedIn) {
         const String id = packet["prompt_id"] | "";
         if (id == tutorialId) return;
@@ -969,6 +1004,9 @@ void open(fs::FS& card, bool mounted, Speak callback, ConnectWifi connect, Retur
     }
     if (connectWifi) connectWifi();
     nextWifiAttempt = millis() + 12000;
+#ifdef UNIFIED_SCREEN
+    if (screen == Screen::Home) drawSignInMenu("; . Move   Enter Select   Alt+Q Home");
+#endif
 }
 
 void close() {
@@ -1073,7 +1111,12 @@ void tick(bool speechBusy) {
     }
     if (orderedRead != OrderedRead::None) readNextPart(speechBusy);
     else if (!speechBusy && menuSpeech.length()) {
-        if (pane == Pane::Game) say(menuSpeech, false);
+        if (pane == Pane::Game) {
+            say(menuSpeech, false);
+#ifdef UNIFIED_SCREEN
+            if (!items.empty()) drawGameMenu();
+#endif
+        }
         menuSpeech = "";
     } else if (!speechBusy && !announcements.empty()) {
         beginOrderedRead(OrderedRead::Live, announcements.pop());
@@ -1105,12 +1148,12 @@ void key(const Key& key, bool repeated) {
     const bool escape = key.base == '`' && (key.fn || (screen == Screen::Game &&
         pane == Pane::Game && inputId.isEmpty() && documentId.isEmpty()));
     const bool enter = !key.fn && key.base == 13;
-    if (key.alt && key.base == 'h') {
+    if (key.alt && key.base == 'k') {
         say("Tab cycles Game, Chat, and History. Semicolon up, period down, comma left, slash right. "
             "Hold an arrow to repeat. Control stops speech. "
-            "Function and digits for F keys. Backtick is Escape in Game. Alt M returns to Game. "
-            "Tap Function to read game view information. Alt U sets the sound server. "
-            "Alt S signs out. Alt Q returns to Cardputer Home");
+            "Function and digits for F keys. Backtick is Escape in Game. Option M returns to Game. "
+            "Tap Function to read game view information. Option U sets the sound server. "
+            "Option S signs out. Alt Q returns to Cardputer Home");
         return;
     }
     if (screen == Screen::Confirm) {
@@ -1170,19 +1213,21 @@ void key(const Key& key, bool repeated) {
         return;
     }
     if (screen == Screen::Home || screen == Screen::Saved) {
-        static const char* labels[] = {"Sign in", "Saved accounts", "Import desktop identities"};
         if (key.base == 8 && !key.fn && !key.ctrl && !key.alt) {
             if (screen == Screen::Home) exitRequested = true;
             else home();
             return;
         }
         if (escape) { home(); return; }
-        const int count = screen == Screen::Home ? 3 : int(accounts.size());
+        const int count = screen == Screen::Home ? int(std::size(signInOptions)) : int(accounts.size());
         if (!count) return;
         if (key.base == '.' || key.base == ';') {
             option = std::clamp(option + (key.base == ';' ? -1 : 1), 0, count - 1);
-            if (screen == Screen::Home) say(labels[option]);
+            if (screen == Screen::Home) say(signInOptions[option]);
             else say(accounts[option].username + ". " + accounts[option].label);
+#ifdef UNIFIED_SCREEN
+            drawSignInMenu();
+#endif
         } else if (screen == Screen::Saved && key.ctrl && key.base == 8) {
             accounts.erase(accounts.begin() + option);
             if (lastAccount == option) { lastAccount = -1; atTable = false; }
@@ -1204,7 +1249,12 @@ void key(const Key& key, bool repeated) {
                 say("Server address. Include W S or W S S, and port when needed");
             } else if (option == 1) {
                 if (accounts.empty()) say("No saved accounts");
-                else { screen = Screen::Saved; option = 0; say(accounts[0].username + ". " + accounts[0].label); }
+                else {
+                    screen = Screen::Saved; option = 0; say(accounts[0].username + ". " + accounts[0].label);
+#ifdef UNIFIED_SCREEN
+                    drawSignInMenu("; . Move   Enter Connect   Backspace Back");
+#endif
+                }
             } else say(importAccounts() ? "Desktop identities imported" : "Could not import desktop identities");
         }
         return;
@@ -1232,11 +1282,11 @@ void key(const Key& key, bool repeated) {
             packet["prompt_id"] = tutorialId;
             packet["action"] = tutorialActions[tutorialSelected].id;
             send(packet);
-        } else if (key.alt && key.base == 'r') say(tutorialText);
+        } else if (key.alt && key.base == 'e') say(tutorialText);
         return;
     }
     if (documentId.length()) {
-        if (key.alt && key.base == 'r') { readText(entry.isEmpty() ? String("Empty document") : entry); return; }
+        if (key.alt && key.base == 'e') { readText(entry.isEmpty() ? String("Empty document") : entry); return; }
         if (enter && key.shift && entry.length() < 8192) { entry += '\n'; return; }
         if (escape || enter) {
             JsonDocument packet;
@@ -1256,7 +1306,7 @@ void key(const Key& key, bool repeated) {
         return;
     }
     if (inputId.length()) {
-        if (key.alt && key.base == 'r' && inputReadOnly) { readText(entry); return; }
+        if (key.alt && key.base == 'e' && inputReadOnly) { readText(entry); return; }
         if (escape && !inputCancelable) { say("This input cannot be cancelled"); return; }
         if (enter && key.shift && inputMultiline && !inputReadOnly && entry.length() < 1024) {
             entry += '\n';

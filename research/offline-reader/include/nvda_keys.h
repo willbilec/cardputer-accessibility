@@ -15,15 +15,15 @@ public:
  std::array<uint8_t,8> report(const keyboardMap::Map& map, bool alternate, KeyDown down) {
   using namespace keyboardMap;
   const bool function = down(functionKey);
-  const bool nvdaShortcut = function && down(altKey);
   const bool control = down(controlKey);
   const bool option = down(optionKey);
   const bool remoteAlt = control && option;
+  const bool nvdaShortcut = function && option && !control;
   altChord = remoteAlt || (altChord && (control || option));
 
   bool nvdaChord = nvdaShortcut;
   auto result = reportWithUsage(false, [&](int key) {
-   if (key == functionKey || (key == altKey && nvdaShortcut)) return false;
+   if (down(altKey) || key == functionKey || (key == optionKey && nvdaShortcut)) return false;
    if (altChord && (key == controlKey || key == optionKey)) return false;
    return down(key);
   }, [&](int key) {
@@ -34,7 +34,7 @@ public:
    return usage;
   });
   nvdaHeld = function && (nvdaHeld || nvdaChord);
-  if (remoteAlt) result[0] |= 0x04; // Left Alt, including when held by itself.
+  if (remoteAlt && !down(altKey)) result[0] |= 0x04;
   // The reserved HID byte carries the synthetic modifier in NVDA reports.
   const auto modifier = std::find(result.begin()+2,result.end(),nvdaModifierUsage);
   if (modifier != result.end()) *modifier = 0;

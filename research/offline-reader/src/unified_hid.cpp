@@ -407,7 +407,7 @@ bool sendUnifiedHid(bool usb,bool mouse,const keyboardMap::Map &map,bool alterna
  }
  if(!mouse||release){
   auto bytes=release?std::array<uint8_t,8>{}:keyboardMap::report(map,alternate,state.fn,optionTap,
-      [&](int key){return keyboard.keyDown(key/14,key%14);});
+      [&](int key){return !state.alt&&keyboard.keyDown(key/14,key%14);});
   if(usb){
    KeyReport report{};report.modifiers=bytes[0];
    memcpy(report.keys,bytes.data()+2,sizeof(report.keys));

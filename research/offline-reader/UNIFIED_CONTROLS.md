@@ -32,7 +32,7 @@ uses numbered book folders and chapter MP3s named like
 - Left bracket slows playback and right bracket speeds it up by 5 percentage
   points, from 50 to 135 percent. The app announces and saves the speed.
   Playback speed changes preserve pitch.
-- M saves one bookmark. Alt + M plays from the bookmark. The app also
+- M saves one bookmark. Option + M plays from the bookmark. The app also
   saves a separate resume position on exit and resumes it when reopened.
 - V lists available versions or announces the only installed version.
   Switching versions opens the same chapter from the beginning if available.
@@ -46,6 +46,11 @@ returns home. Function + backtick is Escape and goes back from settings and
 input screens. On this keyboard, Function + semicolon and Function + period are
 the physical up and down arrows.
 
+On screen-enabled builds, **Settings → Display → Backlight timeout** offers
+Always on, 15 or 30 seconds, or 1, 2, or 5 minutes. Always on is the default.
+Use semicolon and period to choose a timeout and Enter to save it. Any key
+wakes the display and performs its usual action.
+
 In Home, Settings, Time zone, File manager, file actions, and the Wi-Fi
 network list, hold up or down to move through multiple items. A single press
 wraps at the ends. Holding a key stops at the end of the list. Comma jumps
@@ -57,6 +62,8 @@ Global controls:
 - Option + Function + semicolon / period: reader volume up / down.
 - Option + semicolon / period: reader speed down / up.
 - Alt + comma / slash: reader speed down / up.
+- Alt + minus / equals: media volume down / up.
+- Alt + left bracket / right bracket: speech volume down / up.
 - Alt + semicolon / period: reader and media volume up / down together.
   In PlayPalace this also adjusts effects volume.
 - Option + Space: stop speech. Option + R: repeat. Option + H: shortcut help.
@@ -103,10 +110,10 @@ In Storage, select Internal flash space to hear the chip capacity, running
 firmware size, and room left in its firmware partition. Select SD card space to
 hear the mounted filesystem capacity, used space, and available space.
 
-Alt + B reads the battery estimate in five-point increments. With a USB
-data host connected or a voltage near the top of the range, it reads voltage
-and prompts you to unplug. A wall charger can still raise the estimate because
-the board measures battery voltage and has no charging-status readout.
+Alt + B reads an approximate battery percentage in five-point increments.
+It reads voltage when connected to a USB data host or when the reading is
+above the normal full-cell range. For a percentage, check with the cable
+unplugged. The board measures voltage and has no dedicated charge gauge.
 
 The file manager lists the Bluetooth keyboard/mouse program and the current SD
 folder. Enter opens the selected item; M opens file actions. The action menu
@@ -126,10 +133,10 @@ Open a WAV, MP3, or Ogg Vorbis file to play it. Ogg Vorbis files can use the
 volume and period lowers it. Comma and slash seek backward and forward in MP3
 and 44.1 kHz, 16-bit stereo PCM WAV. MP3 seeking is approximate. Backspace
 returns to the file list. Alt Q stops playback and goes home.
-While playing MP3, Ogg or AUG, Alt F toggles the bass cut and announces the
+While playing MP3, Ogg or AUG, Option F toggles the bass cut and announces the
 saved setting. The bass cut starts enabled to reduce low-frequency strain on
 the built-in speaker. Turn it off for full bass through the 3.5 mm jack.
-Alt L toggles Quiet Boost, which starts enabled and raises quieter passages
+Option L toggles Quiet Boost, which starts enabled and raises quieter passages
 without raising the music peak ceiling. It can be turned off independently
 for the track's original dynamics.
 Plugging in headphones automatically mutes the built-in speaker. Lower both
@@ -138,8 +145,8 @@ These controls apply to the `unified` firmware, which fits in the single
 application partition defined by `partitions-playpalace.csv`.
 
 Open Bluetooth and USB keyboard from Home or File manager. The app tries the
-last Bluetooth slot that connected successfully. Alt + 4 selects USB when a USB
-data host is connected. Tap Alt + 1, 2 or 3 to reconnect to that Bluetooth slot. To pair, hold Alt
+last Bluetooth slot that connected successfully. Option + 4 selects USB when a USB
+data host is connected. Tap Option + 1, 2 or 3 to reconnect to that Bluetooth slot. To pair, hold Option
 and the slot number until you hear the instructions, then choose the matching
 **Cardputer KB 1**, **Cardputer KB 2**, or **Cardputer KB 3** entry, followed by
 your Cardputer's four-character suffix. Each slot has its own stable Bluetooth
@@ -263,9 +270,9 @@ select Voice changer. Press Enter to open it.
 | Any key while recording | Stop recording and play through the selected effect. Playback also starts automatically when the clip reaches its time limit. |
 | Space or Apostrophe, immediately left of Enter | Replay the last clip with the currently selected effect. |
 | M | Start or stop live monitoring. Use headphones to avoid speaker feedback. |
-| Alt + left or right bracket | Decrease or increase the shared microphone gain in 3 dB steps. Voice recorder and Recording settings use this same setting. |
-| Alt + H or Option + H | Hear the controls. |
-| Alt + Backspace | Stop playback or monitoring. The clip remains available for replay. |
+| Left or right bracket | Decrease or increase the shared microphone gain in 3 dB steps. Voice recorder and Recording settings use this same setting. |
+| H or Option + H | Hear the controls. |
+| Option + Backspace | Stop playback or monitoring. The clip remains available for replay. |
 | Backspace or Alt + Q | Return to Home and discard the clip. |
 
 The clip stays in RAM. Starting another recording replaces it. The recording
@@ -280,29 +287,26 @@ key plays, including punctuation, Tab, Backspace, Enter, and Space. The keys
 rise in semitones from left to right, starting on Z in the bottom row and
 continuing at the left of each higher row. Play up to eight notes together.
 
-- Alt+1 selects Piano, Alt+2 Chiptune, Alt+3 Drums, Alt+4 Bass, and Alt+5 Glass
-  Bells. Alt+6 selects Grand Piano and Alt+7 selects NES Chip, with stepped
-  triangle bass and pulse leads. Alt+8 selects Analog Brass, Alt+9 Electric
-  Piano, and Alt+0 Drawbar Organ. Each change is spoken. Drums cycle through
+- Option+1 selects Piano, Option+2 Chiptune, Option+3 Drums, Option+4 Bass, and Option+5 Glass
+  Bells. Option+6 selects Grand Piano and Option+7 selects NES Chip, with stepped
+  triangle bass and pulse leads. Option+8 selects Analog Brass, Option+9 Electric
+  Piano, and Option+0 Drawbar Organ. Each change is spoken. Drums cycle through
   twelve percussion sounds across the keys, starting with kick on Z. The
   added sounds are a high tom, cowbell, rimshot, and ride cymbal.
 - Hold Ctrl to sustain released notes. Hold Shift for flanger and Fn for
   tremolo. Hold Option while playing for an arpeggio that pulses through
   the root, octave, and fifth above the octave. You can combine these effects.
-- Alt+[ lowers Quiet Sound Boost and Alt+] raises it. The spoken
+- Option+[ lowers Quiet Sound Boost and Option+] raises it. The spoken
   setting ranges from 0 (off) to 8 (maximum) and is saved.
-- Alt+Z, Alt+X, Alt+C, Alt+V, and Alt+M start backing loops 1 through 5
+- Option+Z, Option+X, Option+C, Option+V, and Option+M start backing loops 1 through 5
   for the current preset. Play the keyboard and use effects over the loop.
   Another loop shortcut replaces the current loop, and the same shortcut
-  restarts it. Alt+Backspace or Alt+Tilde stops the loop. Changing presets
+  restarts it. Option+Backspace or Option+Tilde stops the loop. Changing presets
   also stops it.
-- Alt+H speaks the synth controls and Alt+R announces the current preset.
-  Alt+Space stops speech. Alt+comma and Alt+slash adjust speech rate.
-  Alt+semicolon and Alt+period adjust speech and synth volume together. Add
-  Fn to those volume chords to adjust speech volume alone. Alt with Fn and
-  the left or right arrow also adjusts speech rate. Holding Option while
-  playing the arrow keys adds arpeggio. Alt+Q stops the synth and returns
-  to Home.
+- Option+H speaks the synth controls and Option+Fn+R announces the current
+  preset. Option+Space stops speech. Alt+minus and Alt+equals adjust synth
+  volume. Alt+brackets adjust speech volume. Holding Option while playing
+  the left or right arrow adds arpeggio. Alt+Q stops the synth and returns Home.
 
 ## PlayPalace
 
@@ -320,15 +324,15 @@ It uses the expanded 8 MiB partition layout in `partitions-playpalace.csv`.
   that saved account and server. Alt+Q returns
   to Cardputer Home. Reopen PlayPalace to sign in to the same account and let
   the server recover your table. Log out followed by Yes returns to Home.
-  Alt+S also exits PlayPalace, and Backspace exits from its sign-in screen.
+  Option+S also exits PlayPalace, and Backspace exits from its sign-in screen.
   These exits keep the saved account. Use the game's Leave Table command to
   leave the table explicitly.
 - Tab moves through Game, Chat, and History. Shift+Tab moves backward. In
   Game, semicolon is Up, period is Down, comma is Left, and slash is Right.
   Backtick, the top-left key, follows the desktop Escape action for the current
   game menu. Backspace also goes back when the menu supports it.
-  Hold an arrow to repeat through the game menu. Fn + Alt + an arrow jumps to a grid edge.
-  Fn with the number row invokes F-keys. Alt+M focuses Game. Alt+H reads help.
+  Hold an arrow to repeat through the game menu. Option + Shift + an arrow jumps to a grid edge.
+  Fn with the number row invokes F-keys. Option+M focuses Game. Option+K reads help.
   Tap Fn by itself to read the game view's information, such as available credits during
   a Space Base purchase, without moving focus.
 - Type a table message and press Enter to send. Prefix a message with a
@@ -343,7 +347,7 @@ It uses the expanded 8 MiB partition layout in `partitions-playpalace.csv`.
   disables Wi-Fi modem sleep while connected for faster replies, which can
   increase battery use during play.
 - The global Media Volume caps PlayPalace effects. F9 and F10 adjust their
-  level within that limit. Alt+U sets the HTTP or HTTPS sound asset
+  level within that limit. Option+U sets the HTTP or HTTPS sound asset
   base URL for the active account. Complete effects are cached in
   `/PlayPalace/sounds` for subsequent playback. Music and looping ambience
   are deferred. The firmware accepts Ogg Vorbis and 16-bit PCM WAV effects
@@ -372,15 +376,15 @@ saved Wi-Fi network from Settings.
    MAC address. Leave the port blank for 6837. Use Backspace to
    edit and Function+Backtick to go back. The session key stays silent.
 3. Leave the fingerprint blank to use normal certificate validation. If the
-   Cardputer prompts you to trust a certificate, press **Alt+F** to hear its
+   Cardputer prompts you to trust a certificate, press **Option+F** to hear its
    SHA-256 fingerprint. For an NVDA direct host, compare it with
    `%APPDATA%\nvda\remoteAccess\localRelay\NvdaRemoteRelay.fingerprint` on
-   the Windows host. **Alt+Y** trusts and saves the fingerprint. **Alt+O**
+   the Windows host. **Option+Y** trusts and saves the fingerprint. **Option+O**
    trusts it for the current session. **Function+Backtick** cancels. You can
    also enter the verified fingerprint in advance as 64 hexadecimal digits
    with optional colon separators.
 4. Review the host and port and press Enter. After a new connection,
-   press **Alt+Enter** when the Cardputer announces one controlled computer.
+   press **Option+Enter** when the Cardputer announces one controlled computer.
    Selecting a recent connection starts forwarding automatically once that
    computer is ready and the keys used to select it have been released.
    The Cardputer reads incoming NVDA speech using its offline eSpeak voice.
@@ -392,7 +396,7 @@ saved Wi-Fi network from Settings.
 
 Up to five recent connections appear first, newest first. A valid SD import
 is saved immediately. A manual entry is saved when a controlled computer is
-available. Press Enter to reconnect or Alt+Backspace to forget a selected
+available. Press Enter to reconnect or Option+Backspace to forget a selected
 connection. Recent connections store keys in the Cardputer's internal settings
 and the SD import file remains available for editing. Use an optional
 connection name to distinguish computers on the same relay.
@@ -424,16 +428,16 @@ on both default layers. Option sends the Windows key. Custom mappings still appl
 - **Fn+1** through **Fn+Equals** send **F1** through **F12** when started
   with a fresh Fn hold. **Fn+Backtick** sends Escape and **Fn+Backspace**
   sends Delete.
-- For NVDA commands on the number row, hold **Fn+physical Alt**, then press
-  the number. For an NVDA command with an F key, press **Fn+physical Alt**,
-  release physical Alt while keeping Fn held, then press the F key's top-row
+- For NVDA commands on the number row, hold **Fn+Option**, then press
+  the number. For an NVDA command with an F key, press **Fn+Option**,
+  release Option while keeping Fn held, then press the F key's top-row
   key.
 - Hold **Control+Option** to send Windows Left Alt. For example, hold both
   keys and press **Tab** for Alt+Tab.
 
-Global reader shortcuts stay local. Use **Alt+Enter** to suspend
-forwarding, **Alt+D** in local mode to disconnect, or **Alt+Q** to return
-Home. **Alt+H** reads the app controls in local mode. After a connection loss,
+Global reader shortcuts stay local. Use **Option+Enter** to suspend
+forwarding, **Option+D** in local mode to disconnect, or **Alt+Q** to return
+Home. **Option+K** reads the app controls in local mode. After a connection loss,
 press Enter to retry. A stalled keyboard connection discards queued input
 before closing. An explicit retry from a recent connection starts forwarding
 once the connection is ready again.
@@ -447,5 +451,5 @@ an app-only update. See [flashing and recovery](../../FLASHING.md).
 WAV, MP3 and Vorbis decoder objects start on demand and are released when playback ends
 or is cancelled. The recorder, file copy, and playback share a scratch buffer.
 Bluetooth stops advertising, disconnects, and releases the BLE stack on exit.
-Alt + B estimates battery level from the median of 15 voltage samples and a
-one-cell lithium-ion curve. The percentage remains approximate while charging.
+Alt + B estimates battery level from the median of 15 spaced voltage samples
+and a one-cell lithium-ion discharge curve.

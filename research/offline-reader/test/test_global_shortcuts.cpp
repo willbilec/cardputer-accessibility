@@ -24,4 +24,10 @@ int main() {
     k.col=11; assert(route(k)==Command::CombinedVolumeDown);
     k.row=2; assert(route(k)==Command::CombinedVolumeUp);
     k.function=true; assert(route(k)==Command::None);
+    k.function=false;
+    k.row=0; k.col=11; assert(route(k)==Command::MediaDown);
+    k.col=12; assert(route(k)==Command::MediaUp);
+    k.row=1; k.col=11; assert(route(k)==Command::VolumeDown);
+    k.col=12; assert(route(k)==Command::VolumeUp);
+    k.function=true; assert(route(k)==Command::None);
 }
