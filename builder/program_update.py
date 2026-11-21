@@ -55,7 +55,9 @@ def _validate_manifest(update):
         size = item.get("size") if isinstance(item, dict) else None
         checksum = item.get("sha256") if isinstance(item, dict) else None
         is_module = isinstance(name, str) and bool(re.fullmatch(r"[a-z][a-z0-9_]*\.py", name))
-        is_help = isinstance(name, str) and bool(re.fullmatch(r"help/[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(txt|html)", name))
+        is_help = isinstance(name, str) and bool(
+            re.fullmatch(r"help/[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(txt|html|ps1|sh)", name)
+        )
         if not (is_module or is_help) or name in seen:
             raise ValueError("The program update contains an unexpected file.")
         if not isinstance(size, int) or isinstance(size, bool) or size < 0 \
