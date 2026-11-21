@@ -36,7 +36,11 @@ def package(output, with_source=False):
     shutil.copytree(base / "Lib", runtime / "Lib", ignore=excluded)
     dependencies = Path(site.getsitepackages()[-1])
     shutil.copytree(dependencies, runtime / "Lib/site-packages",
-                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "test", "tests"))
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    subprocess.check_call([
+        str(runtime / "python.exe"), "-I", "-c",
+        "import platformio.test; from platformio.run.processor import EnvironmentProcessor",
+    ], stdout=subprocess.DEVNULL)
 
     files = {"LICENSE", "BUILDING.md", "FLASHING.md"}
     files.update("builder/" + name for name in (*PROGRAM_FILES, *PROGRAM_ASSETS, "bootstrap.py"))

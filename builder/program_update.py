@@ -8,7 +8,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from build import ROOT, STATE, load_modules
 from catalog import GITHUB_API, RELEASE_BASE, describe_asset, fetch_asset, request, version
 
-RUNTIME_ABI = 1
+RUNTIME_ABI = 2
 PROGRAM_FILES = ("app.py", "build.py", "catalog.py", "flash.py", "progress.py",
                  "program_update.py", "source_files.py")
 PROGRAM_ASSETS = tuple(
@@ -37,7 +37,10 @@ def check_update():
     if update["tag"] != tag or version(update["version"]) != latest:
         raise ValueError("The program update does not match the GitHub release tag.")
     if update["runtime_abi"] != current["runtime_abi"]:
-        raise ValueError("This program release needs a newer runtime. Download its Windows ZIP.")
+        raise ValueError(
+            "This program release needs a newer runtime. Download the latest Windows ZIP from "
+            "https://github.com/willbilec/cardputer-accessibility/releases/latest."
+        )
     return update
 
 
