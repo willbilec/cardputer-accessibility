@@ -28,9 +28,10 @@ jobs:
           "$RUNNER_TEMP/test_playpalace_speech"
 
   firmware:
+    if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       matrix:
-        selection: [core, key-learning, voice-recorder, bluetooth-usb-keyboard, playpalace, nvda-remote, voice-changer, bible, synthesizer, sd-sharing, compressed-playback, all]
+        selection: [all]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -94,3 +95,4 @@ jobs:
       - run: gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
+
