@@ -58,6 +58,8 @@ class Builder(wx.Frame):
             self.modules.Bind(wx.EVT_LIST_ITEM_ACTIVATED, lambda event: self.toggle_row(event.GetIndex()))
         layout.Add(self.modules, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 6)
         self.button(panel, layout, "Select all current apps", self.select_all)
+        self.screen = wx.CheckBox(panel, label="Include LCD display")
+        layout.Add(self.screen, 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
         self.button(panel, layout, "Build firmware", lambda _: self.start_build("build"))
 
         layout.Add(wx.StaticText(panel, label="Cardputer USB port"), 0, wx.ALL, 6)
@@ -112,8 +114,14 @@ class Builder(wx.Frame):
     def selected_modules(self):
         return [item["id"] for index, item in enumerate(self.native) if self.module_selected(index)]
 
+    def update_screen_checkbox(self):
+        supported = (self.selected_catalog() or {}).get("supports_screen", False)
+        self.screen.SetLabel("Include LCD display" if supported else "Include LCD display (unavailable for this source)")
+        self.screen.Enable(supported and not self.busy)
+
     def show_modules(self, retain=None):
         catalog = self.selected_catalog()
+        self.update_screen_checkbox()
         self.native = [item for item in (catalog or {}).get("modules", []) if item["kind"] == "native"]
         self.modules.DeleteAllItems()
         for index, item in enumerate(self.native):
@@ -186,7 +194,7 @@ class Builder(wx.Frame):
         focus = wx.Window.FindFocus()
         self.log.SetFocus()
         self.GetMenuBar().EnableTop(0, False)
-        for control in [*self.actions, self.source, self.modules, self.port]:
+        for control in [*self.actions, self.source, self.modules, self.port, self.screen]:
             control.Disable()
         self.report(label)
         self.make_status.SetStatusText(label)
@@ -196,6 +204,7 @@ class Builder(wx.Frame):
             self.GetMenuBar().EnableTop(0, True)
             for control in [*self.actions, self.source, self.modules, self.port]:
                 control.Enable()
+            self.update_screen_checkbox()
             if focus:
                 focus.SetFocus()
             if error is not None:
@@ -419,6 +428,7 @@ class Builder(wx.Frame):
                 return
         if selected is None:
             selected = self.selected_modules()
+        screen = current.get("supports_screen", False) and self.screen.GetValue()
         catalog = current if current is not self.local else None
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         output = STATE / "builds" / (stamp + "-" + uuid4().hex[:8])
@@ -427,7 +437,7 @@ class Builder(wx.Frame):
             if catalog is not None:
                 wx.CallAfter(self.report, f"Checking the cached firmware source for {catalog['tag']}.")
             root = source_tree(catalog) if catalog is not None else ROOT
-            build(root, selected, output, run=self.command)
+            build(root, selected, output, run=self.command, screen=screen)
             if port is not None:
                 wx.CallAfter(self.report, f"USB recovery files: {output}")
                 return self.flash_output(port, output, allow_migration=action == "migrate", backup=backup)
@@ -451,8 +461,10 @@ class Builder(wx.Frame):
             return
 
         def choose(installed):
+            screen = catalog.get("supports_screen", False) and self.screen.GetValue()
+            display = "LCD enabled" if screen else "LCD disabled"
             if installed is None:
-                if wx.MessageBox("The device did not report a build version. Install with all current apps?",
+                if wx.MessageBox(f"The device did not report a build version. Install with all current apps and {display}?",
                                  "Older or unidentified firmware", wx.YES_NO | wx.NO_DEFAULT, self) != wx.YES:
                     return
                 selected = [item["id"] for item in self.native]
@@ -468,11 +480,12 @@ class Builder(wx.Frame):
                 if any(offered < current for current, offered in comparisons):
                     self.notify("The selected source would downgrade installed firmware.", error=True)
                     return
-                if all(offered == current for current, offered in comparisons):
+                if (all(offered == current for current, offered in comparisons)
+                        and screen == installed.get("screen", False)):
                     self.notify("The launcher and selected apps are current.")
                     return
                 offered = ", ".join(f"{name} {available[name]}" for name in selected) or "no optional apps"
-                if wx.MessageBox(f"Install launcher {catalog['launcher']} with {offered}?",
+                if wx.MessageBox(f"Install launcher {catalog['launcher']} with {offered} and {display}?",
                                  "Firmware update", wx.YES_NO | wx.NO_DEFAULT, self) != wx.YES:
                     return
             self.start_build("flash", selected=selected, port=port)

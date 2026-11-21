@@ -31,6 +31,9 @@ updates, partition installation, saved-build recovery and SD updates. The
 default selection includes all selectable apps. Clear every check box to build
 the base launcher, which includes settings, keyboard learning, file browsing,
 and TXT and WAV playback. The first build downloads pinned audio sources.
+Check **Include LCD display** to build the visual interface and backlight
+settings. The check box is off by default. Screen-off builds omit the display
+driver, menus, icons, and fonts. For command-line builds, pass `--screen`.
 When the Bluetooth/USB keyboard module is selected, its source downloads in
 parallel with the audio sources. PlatformIO
 then installs its toolchain and any libraries for the selected apps.

@@ -72,10 +72,23 @@ class BuilderTests(unittest.TestCase):
         self.assertNotIn("micro-vorbis", section)
         self.assertNotIn("+<media_decoder.cpp>", section)
         self.assertNotIn("M5GFX", section)
+        self.assertNotIn("UNIFIED_SCREEN", section)
+        self.assertNotIn("screen", identity)
         self.assertEqual(identity["components"], ["json"])
         self.assertNotIn("UNIFIED_DIAGNOSTICS=1", section.split("build_flags", 1)[1])
         with self.assertRaisesRegex(ValueError, "Unknown native"):
             generate(project, load_modules(ROOT), ["nonexistent"])
+
+    def test_screen_build_adds_display_driver_and_identity(self):
+        project = self.root / "project"
+        project.mkdir()
+        original = ROOT / "research/offline-reader"
+        (project / "platformio.ini").write_bytes((original / "platformio.ini").read_bytes())
+        config, identity, _ = generate(project, load_modules(ROOT), [], screen=True)
+        section = config.read_text(encoding="utf-8").split(f"[env:{ENVIRONMENT}]", 1)[1]
+        self.assertIn("-DUNIFIED_SCREEN=1", section)
+        self.assertIn("symlink://../M5GFX", section)
+        self.assertIs(identity["screen"], True)
 
     def test_shared_components_follow_only_selected_consumers(self):
         catalog = load_modules(ROOT)
@@ -183,7 +196,8 @@ class BuilderTests(unittest.TestCase):
             source.writestr("builder/modules.json", json.dumps(manifest))
             source.writestr("fetch_dependencies.py", "# archived dependency script")
         catalog = {"tag": "v" + manifest["launcher"], "launcher": manifest["launcher"],
-                   "modules": records, "source": describe_asset(archive)}
+                   "modules": records, "source": describe_asset(archive),
+                   "supports_screen": manifest["supports_screen"]}
         cache = self.root / "cache"
         with patch("catalog.request", return_value=io.BytesIO(archive.read_bytes())):
             tree = source_tree(catalog, cache)

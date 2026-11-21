@@ -77,6 +77,8 @@ def check_asset(asset):
 def check_catalog(catalog, tag):
     if catalog["schema"] != 1 or catalog["tag"] != tag:
         raise ValueError("Unsupported release catalog")
+    if not isinstance(catalog.get("supports_screen", False), bool):
+        raise ValueError("Invalid display support in release catalog")
     if version(catalog["launcher"]) != version(tag.removeprefix("v")):
         raise ValueError("Launcher version differs from release tag")
     check_asset(catalog["source"])
@@ -179,7 +181,8 @@ def source_tree(catalog, cache=STATE):
         keys = ("id", "name", "version", "kind")
         actual = [{key: item[key] for key in keys} for item in embedded["modules"]]
         declared = [{key: item[key] for key in keys} for item in catalog["modules"]]
-        if embedded["launcher"] != catalog["launcher"] or actual != declared:
+        if (embedded["launcher"] != catalog["launcher"] or actual != declared
+                or embedded.get("supports_screen", False) != catalog.get("supports_screen", False)):
             raise ValueError("Release source and catalog differ")
         (tree / ".source-sha256").write_text(checksum, encoding="ascii")
         tree.rename(root)
@@ -254,6 +257,8 @@ def prepare_release(tag, output):
                            "--", *firmware_files(ROOT, manifest)], cwd=ROOT)
     catalog = {"schema": 1, "tag": tag, "launcher": manifest["launcher"],
                "source": describe_asset(archive), "modules": []}
+    if manifest.get("supports_screen", False):
+        catalog["supports_screen"] = True
     for module in manifest["modules"]:
         entry = {key: module[key] for key in ("id", "name", "version", "kind")}
         entry["description"] = module.get("description", "")

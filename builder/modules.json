@@ -1,6 +1,7 @@
 {
   "schema": 1,
   "launcher": "0.2.1",
+  "supports_screen": true,
   "components": {
     "media-decoder": {
       "sources": ["media_decoder.cpp"]
