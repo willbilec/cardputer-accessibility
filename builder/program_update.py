@@ -13,9 +13,6 @@ RUNTIME_ABI = 2
 MAX_UPDATE_BYTES = 4 * 1024**2
 PROGRAM_FILES = ("app.py", "build.py", "catalog.py", "flash.py", "progress.py",
                  "program_update.py", "source_files.py")
-PROGRAM_ASSETS = tuple(
-    "help/" + path.name for path in sorted(Path(__file__).with_name("help").iterdir()) if path.is_file()
-)
 
 
 def check_update():
@@ -55,10 +52,7 @@ def _validate_manifest(update):
         size = item.get("size") if isinstance(item, dict) else None
         checksum = item.get("sha256") if isinstance(item, dict) else None
         is_module = isinstance(name, str) and bool(re.fullmatch(r"[a-z][a-z0-9_]*\.py", name))
-        is_help = isinstance(name, str) and bool(
-            re.fullmatch(r"help/[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(txt|html|ps1|sh)", name)
-        )
-        if not (is_module or is_help) or name in seen:
+        if not is_module or name in seen:
             raise ValueError("The program update contains an unexpected file.")
         if not isinstance(size, int) or isinstance(size, bool) or size < 0 \
                 or not isinstance(checksum, str) or len(checksum) != 64:
@@ -120,7 +114,7 @@ def write_update_assets(root, tag, output):
     version_number = tag.removeprefix("v")
     version(version_number)
     files = []
-    for name in (*PROGRAM_FILES, *PROGRAM_ASSETS):
+    for name in PROGRAM_FILES:
         path = root / "builder" / name
         files.append({"path": name, "sha256": digest(path), "size": path.stat().st_size})
     metadata = {"schema": 2, "version": version_number, "runtime_abi": RUNTIME_ABI,

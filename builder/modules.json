@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "launcher": "0.2.6",
+  "launcher": "0.2.7",
   "supports_screen": true,
   "components": {
     "media-decoder": {
@@ -109,6 +109,7 @@
       "flags": ["-DUNIFIED_BIBLE_APP=1", "-DUNIFIED_BIBLE_TEMPO=1"],
       "requires_setup": true,
       "setup_guide": "builder/help/bible-setup.html",
+      "setup_assets": ["sort_nlt_bible.ps1", "sort_nlt_bible.sh"],
       "help": "bible.txt",
       "libraries": []
     },

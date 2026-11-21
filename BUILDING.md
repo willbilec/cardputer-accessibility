@@ -39,11 +39,12 @@ driver, menus, icons, and fonts. For command-line builds, pass `--screen`.
 When the Bluetooth/USB keyboard module is selected, its source downloads in
 parallel with the audio sources. PlatformIO
 then installs its toolchain and any libraries for the selected apps. When help
-text is selected, the build writes it to `sdcard/Help` in the output folder and
-offers to copy it to a mounted microSD card. The on-device Help menu lists those
-`.txt` files. `builder/help` contains detailed Bible setup instructions and Old
-Testament sorting scripts (`bible-setup.html`, `sort_nlt_bible.ps1`, and
-`sort_nlt_bible.sh`).
+text is selected, the builder downloads the common help text and documentation
+for selected apps only, writes it to `sdcard/Help` in the output folder, and
+offers to copy it to a mounted microSD card. Selecting Bible Reader also
+downloads its setup guide and Old Testament sorting scripts into the builder's
+`workspace/help/<release>` folder. These files are separate release assets;
+they are not part of the builder program or firmware source archive.
 The status bar shows the current download percentage. The activity log keeps
 completed transfers and build phases. The builder
 chooses a job count from available logical CPUs and free RAM. The program's
@@ -53,8 +54,9 @@ while saving each completed image separately. Keep the workspace when
 updating the program.
 
 The builder silently checks for program updates from GitHub. It downloads the
-individual application and help files, verifies every SHA-256 checksum, then
-switches to the update only after all files pass. Updates take effect the next
+individual Builder Python files, verifies every SHA-256 checksum, then switches
+to the update only after all files pass. Help and setup resources are separate
+checksummed files downloaded only for selected apps. Updates take effect the next
 time you open the builder. A runtime compatibility change requires the Windows
 ZIP or updated Linux dependencies. You can check manually from the Tools menu.
 When a single Cardputer is connected at startup, the builder also checks
@@ -101,9 +103,11 @@ from open to return to Home after cleanup. Tick and close are optional.
 
 Add a short `builder/help/<name>.txt` file and set the module's `help` field to
 make it available for optional on-card help. For apps that need user-provided
-files or another setup step, set `requires_setup: true` and `setup_guide` to a
-guide path such as `builder/help/bible-setup.html`; the builder labels the app
-as requiring extra setup and shows that guide path.
+files or another setup step, set `requires_setup: true`, `setup_guide` to a
+guide path, and `setup_assets` to any companion scripts. The release catalog
+publishes these as separate checksummed assets, and the builder downloads them
+only when that app is selected. Keep help and setup assets out of
+`PROGRAM_FILES`, Windows Builder packages, and the firmware source archive.
 
 An SD entry lists a source data file and its name on the card. Increase the
 changed component's version when preparing a release. A release pins a

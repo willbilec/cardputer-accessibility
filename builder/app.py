@@ -11,7 +11,8 @@ import wx
 from wx.lib.scrolledpanel import ScrolledPanel
 
 from build import NO_CONSOLE, ROOT, build, load_modules
-from catalog import STATE, cached_catalog, device_update_summary, install_sd, installed_version, refresh, source_tree, version
+from catalog import (STATE, cached_catalog, device_update_summary, download_app_resources, install_sd,
+                     installed_version, refresh, source_tree, version)
 from flash import flash, ports, read_identity
 from progress import output_events
 from program_update import check_update, install_update
@@ -66,7 +67,7 @@ class Builder(wx.Frame):
             self.help_pane.GetPane(), label="Include Keyboard learning in the Help menu")
         self.key_learning.SetName("Include Keyboard learning")
         self.include_help = wx.CheckBox(
-            self.help_pane.GetPane(), label="Include help text for selected apps")
+            self.help_pane.GetPane(), label="Include help text for selected apps (downloaded only when selected)")
         self.include_help.SetName("Include help text for selected apps")
         help_layout.Add(self.key_learning, 0, wx.ALL, 4)
         help_layout.Add(self.include_help, 0, wx.ALL, 4)
@@ -152,7 +153,7 @@ class Builder(wx.Frame):
             if item.get("requires_setup"):
                 description = "Requires extra setup. " + description
                 if item.get("setup_guide"):
-                    description += " Setup guide: " + item["setup_guide"]
+                    description += " The guide and setup files download when this app is selected."
             self.modules.SetItem(index, 2, description)
             self.modules.SetItem(index, 3, item["version"])
             self.set_module(index, (item["id"] != "key-learning") if retain is None else item["id"] in retain)
@@ -474,7 +475,11 @@ class Builder(wx.Frame):
             if catalog is not None:
                 wx.CallAfter(self.report, f"Checking the cached firmware source for {catalog['tag']}.")
             root = source_tree(catalog) if catalog is not None else ROOT
-            build(root, selected, output, run=self.command, screen=screen, include_help=include_help)
+            help_root = download_app_resources(catalog, selected, include_help) if catalog is not None else None
+            if help_root is not None:
+                wx.CallAfter(self.report, f"Selected-app help and setup files are available at {help_root}.")
+            build(root, selected, output, run=self.command, screen=screen, include_help=include_help,
+                  help_root=help_root)
             if port is not None:
                 wx.CallAfter(self.report, f"USB recovery files: {output}")
                 return self.flash_output(port, output, allow_migration=action == "migrate", backup=backup)

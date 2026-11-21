@@ -223,18 +223,18 @@ def verify_linked_codecs(artifacts, core, components):
 
 
 def build(root, selected, destination, run=subprocess.check_call, fetch=True, check_codecs=False,
-          screen=False, include_help=False):
+          screen=False, include_help=False, help_root=None):
     root = root.resolve()
     destination = destination.resolve()
     catalog = load_modules(root)
     project = root / "research/offline-reader"
     with project_lock(project):
         return build_locked(root, project, catalog, selected, destination, run, fetch, check_codecs,
-                            screen, include_help)
+                            screen, include_help, help_root)
 
 
 def build_locked(root, project, catalog, selected, destination, run, fetch, check_codecs, screen=False,
-                 include_help=False):
+                 include_help=False, help_root=None):
     config, identity, core = generate(project, catalog, selected, screen, include_help)
     if fetch:
         dependencies = [str(PYTHON), "-u", str(root / "fetch_dependencies.py"), "--firmware"]
@@ -272,7 +272,7 @@ def build_locked(root, project, catalog, selected, destination, run, fetch, chec
         for filename in dict.fromkeys(filenames):
             if not re.fullmatch(r"[A-Za-z0-9_-]+\.txt", filename):
                 raise ValueError(f"Invalid help filename: {filename}")
-            source = root / "builder" / "help" / filename
+            source = (Path(help_root) if help_root is not None else root / "builder" / "help") / filename
             if not source.is_file():
                 raise ValueError(f"Missing help document: {source}")
             shutil.copyfile(source, help_dir / filename)

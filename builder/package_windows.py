@@ -11,7 +11,7 @@ import sys
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from build import ROOT, load_modules
-from program_update import PROGRAM_ASSETS, PROGRAM_FILES, RUNTIME_ABI
+from program_update import PROGRAM_FILES, RUNTIME_ABI
 from source_files import firmware_files
 
 
@@ -43,7 +43,7 @@ def package(output, with_source=False):
     ], stdout=subprocess.DEVNULL)
 
     files = {"LICENSE", "BUILDING.md", "FLASHING.md"}
-    files.update("builder/" + name for name in (*PROGRAM_FILES, *PROGRAM_ASSETS, "bootstrap.py"))
+    files.update("builder/" + name for name in (*PROGRAM_FILES, "bootstrap.py"))
     if with_source:
         files.update(firmware_files(ROOT, load_modules(ROOT), sd_data=True))
     for filename in sorted(files):

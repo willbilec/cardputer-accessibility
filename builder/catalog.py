@@ -82,6 +82,8 @@ def check_catalog(catalog, tag):
     if version(catalog["launcher"]) != version(tag.removeprefix("v")):
         raise ValueError("Launcher version differs from release tag")
     check_asset(catalog["source"])
+    for asset in catalog.get("help_assets", {}).values():
+        check_asset(asset)
     seen = set()
     for module in catalog["modules"]:
         name = module["id"]
@@ -93,6 +95,11 @@ def check_catalog(catalog, tag):
             check_asset(module["asset"])
         elif module["kind"] != "native":
             raise ValueError(f"Invalid package type for {name}")
+        for key in ("help_asset", "setup_guide_asset"):
+            if key in module:
+                check_asset(module[key])
+        for asset in module.get("setup_assets", {}).values():
+            check_asset(asset)
 
 
 def cached_catalog(cache=STATE):
@@ -189,6 +196,36 @@ def source_tree(catalog, cache=STATE):
     return root
 
 
+def download_app_resources(catalog, selected, include_help, cache=STATE):
+    """Fetch only selected apps' on-card help and setup resources."""
+    if catalog is None:
+        return None
+    resources = {}
+    if include_help:
+        resources.update(catalog.get("help_assets", {}))
+        for module in catalog["modules"]:
+            if module["id"] in selected and module.get("help_asset"):
+                resources[module["help"]] = module["help_asset"]
+    for module in catalog["modules"]:
+        if module["id"] not in selected:
+            continue
+        if module.get("setup_guide_asset"):
+            resources[Path(module["setup_guide"]).name] = module["setup_guide_asset"]
+        resources.update(module.get("setup_assets", {}))
+    if not resources:
+        return None
+    destination = cache / "help" / catalog["tag"]
+    destination.mkdir(parents=True, exist_ok=True)
+    for filename, asset in resources.items():
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,100}", filename):
+            raise ValueError("Invalid help or setup filename")
+        downloaded = fetch_asset(catalog, asset, cache)
+        target = destination / filename
+        if not target.is_file() or digest(target) != asset["sha256"]:
+            shutil.copyfile(downloaded, target)
+    return destination
+
+
 def package_folder(card, module):
     name = module["id"]
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,39}", name):
@@ -256,7 +293,11 @@ def prepare_release(tag, output):
     subprocess.check_call(["git", "archive", "--format=zip", "-o", str(archive.resolve()), tag,
                            "--", *firmware_files(ROOT, manifest)], cwd=ROOT)
     catalog = {"schema": 1, "tag": tag, "launcher": manifest["launcher"],
-               "source": describe_asset(archive), "modules": []}
+               "source": describe_asset(archive), "modules": [], "help_assets": {}}
+    for filename in ("file-manager.txt", "settings.txt"):
+        asset = output / f"help-{filename}"
+        shutil.copyfile(ROOT / "builder" / "help" / filename, asset)
+        catalog["help_assets"][filename] = describe_asset(asset)
     if manifest.get("supports_screen", False):
         catalog["supports_screen"] = True
     for module in manifest["modules"]:
@@ -266,6 +307,21 @@ def prepare_release(tag, output):
         for key in ("requires_setup", "setup_guide", "help"):
             if key in module:
                 entry[key] = module[key]
+        if module.get("help"):
+            asset = output / f"help-{module['help']}"
+            shutil.copyfile(ROOT / "builder" / "help" / module["help"], asset)
+            entry["help_asset"] = describe_asset(asset)
+        if module.get("setup_guide"):
+            setup_name = Path(module["setup_guide"]).name
+            asset = output / f"setup-{module['id']}-{setup_name}"
+            shutil.copyfile(ROOT / module["setup_guide"], asset)
+            entry["setup_guide_asset"] = describe_asset(asset)
+        if module.get("setup_assets"):
+            entry["setup_assets"] = {}
+            for setup_name in module["setup_assets"]:
+                asset = output / f"setup-{module['id']}-{setup_name}"
+                shutil.copyfile(ROOT / "builder" / "help" / setup_name, asset)
+                entry["setup_assets"][setup_name] = describe_asset(asset)
         if module.get("requires"):
             entry["requires"] = module["requires"]
         if module["kind"] == "sd":
