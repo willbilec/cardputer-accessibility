@@ -8,7 +8,7 @@ import shutil
 import tempfile
 
 from build import ROOT, STATE, digest, load_modules
-from catalog import GITHUB_API, RELEASE_BASE, REPOSITORY, request, version
+from catalog import GITHUB_API, RAW_BASE, RELEASE_BASE, release_metadata, request, version
 
 RUNTIME_ABI = 2
 MAX_UPDATE_BYTES = 4 * 1024**2
@@ -38,14 +38,16 @@ def check_update():
     latest = version(tag.removeprefix("v"))
     if latest <= version(current["version"]):
         return None
-    expected = f"{RELEASE_BASE}/{tag}/builder-update.json"
-    if expected not in {asset["browser_download_url"] for asset in release["assets"]}:
-        return None
-    with request(expected) as response:
-        payload = response.read(16 * 1024 + 1)
-    if len(payload) > 16 * 1024:
-        raise ValueError("Program update metadata is too large.")
-    update = json.loads(payload)
+    update = release_metadata(release).get("update")
+    if update is None:
+        expected = f"{RELEASE_BASE}/{tag}/builder-update.json"
+        if expected not in {asset["browser_download_url"] for asset in release["assets"]}:
+            return None
+        with request(expected) as response:
+            payload = response.read(16 * 1024 + 1)
+        if len(payload) > 16 * 1024:
+            raise ValueError("Program update metadata is too large.")
+        update = json.loads(payload)
     if update.get("schema") != 2 or update.get("tag") != tag or version(update["version"]) != latest:
         raise ValueError("The program update does not match the GitHub release tag.")
     if update["runtime_abi"] != RUNTIME_ABI or current["runtime_abi"] != RUNTIME_ABI:
@@ -55,6 +57,8 @@ def check_update():
 
 
 def _validate_manifest(update):
+    if "commit" in update and not re.fullmatch(r"[a-f0-9]{40}", update["commit"]):
+        raise ValueError("Invalid builder program commit.")
     files = update.get("files")
     if not isinstance(files, list) or not files:
         raise ValueError("The program update file list is invalid.")
@@ -99,7 +103,7 @@ def install_update(update, state=STATE):
             name = item["path"]
             target = candidate / name
             target.parent.mkdir(parents=True, exist_ok=True)
-            url = f"https://raw.githubusercontent.com/{REPOSITORY}/{tag}/builder/{name}"
+            url = f"{RAW_BASE}/{update.get('commit', tag)}/builder/{name}"
             with request(url) as response:
                 payload = response.read(item["size"] + 1)
             if len(payload) != item["size"] or hashlib.sha256(payload).hexdigest() != item["sha256"]:
@@ -123,7 +127,7 @@ def install_update(update, state=STATE):
         pointer.replace(state / "program-update.json")
 
 
-def write_update_assets(root, tag, output):
+def update_manifest(root, tag, commit=None):
     version_number = tag.removeprefix("v")
     version(version_number)
     files = []
@@ -132,4 +136,6 @@ def write_update_assets(root, tag, output):
         files.append({"path": name, "sha256": digest(path), "size": path.stat().st_size})
     metadata = {"schema": 2, "version": version_number, "runtime_abi": RUNTIME_ABI,
                 "tag": tag, "files": files}
-    (output / "builder-update.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    if commit is not None:
+        metadata["commit"] = commit
+    return metadata

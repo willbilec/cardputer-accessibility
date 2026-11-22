@@ -317,7 +317,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
     parser.add_argument("modules", nargs="*")
-    parser.add_argument("--preset", help="core, all, or a single module ID")
+    parser.add_argument("--preset", help="core, standard, all, or a single module ID")
     parser.add_argument("--skip-fetch", action="store_true")
     parser.add_argument("--check-codecs", action="store_true", help="Check codec presence in linked firmware")
     parser.add_argument("--screen", action="store_true", help="Keep the LCD on and show spoken text")
@@ -329,8 +329,9 @@ if __name__ == "__main__":
     selected = args.modules
     if args.preset and selected:
         parser.error("Choose a preset or list explicit modules")
-    if args.preset == "all":
-        selected = [item["id"] for item in load_modules(ROOT)["modules"] if item["kind"] == "native"]
+    if args.preset in {"all", "standard"}:
+        selected = [item["id"] for item in load_modules(ROOT)["modules"] if item["kind"] == "native"
+                    and (args.preset == "all" or item["id"] != "key-learning")]
     elif args.preset and args.preset != "core":
         selected = [args.preset]
     if args.keyboard_learning:

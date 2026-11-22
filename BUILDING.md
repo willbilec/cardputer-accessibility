@@ -5,11 +5,10 @@
 On 64-bit Windows, extract the entire release ZIP to a writable folder and
 open **Cardputer ADV Firmware Builder.exe**. The ZIP includes Python and the
 builder dependencies. The GitHub release ZIP opens the GitHub catalog
-automatically. The default app selection and **Select all current apps** are
-available as precompiled firmware with either LCD setting and the help-text
-option off. The builder checks the archive and saves a flashable build.
-Custom app selections and the help-text option use Git and the pinned
-compiler, source and ESP32-S3 SDK. To package a local preview, add
+automatically. The default app selection is available as precompiled
+universal firmware with the LCD and help-text options off. The builder
+checks the archive and saves a flashable build. Other selections use Git
+and the pinned compiler, source and ESP32-S3 SDK. To package a local preview, add
 `--with-source`.
 
 To regenerate the Windows ZIP, run
@@ -17,7 +16,8 @@ To regenerate the Windows ZIP, run
 from a 64-bit Windows virtual environment with the builder requirements installed.
 
 Use Python 3.12 or later and install Git. Create a Python virtual environment and
-install the builder dependencies. On Linux, wxPython also needs GTK. Use your
+install the builder dependencies. On Linux, use the source archive from the
+release. wxPython also needs GTK. Use your
 distribution's wxPython package with a system-site-packages virtual environment
 if a wxPython wheel is unavailable for your distribution.
 

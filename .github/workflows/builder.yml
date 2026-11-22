@@ -29,10 +29,6 @@ jobs:
 
   firmware:
     if: startsWith(github.ref, 'refs/tags/v')
-    strategy:
-      matrix:
-        selection: [all, standard]
-        screen: [headless, lcd]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,32 +36,19 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install platformio==6.2.0 pyserial==3.5
-      - shell: bash
-        run: |
-          screen=()
-          if [[ ${{ matrix.screen }} == lcd ]]; then screen=(--screen); fi
-          if [[ ${{ matrix.selection }} == all ]]; then
-            selection=(--preset all)
-          else
-            read -r -a selection <<< "$(python -c 'import json; print(" ".join(m["id"] for m in json.load(open("builder/modules.json"))["modules"] if m["kind"] == "native" and m["id"] != "key-learning"))')"
-          fi
-          python builder/build.py release-build "${selection[@]}" "${screen[@]}" --check-codecs
+      - run: python builder/build.py release-build --preset standard --check-codecs
       - run: python -c "import sys; from pathlib import Path; sys.path.insert(0,'builder'); from flash import check_layout; check_layout(Path('release-build/partitions.bin').read_bytes())"
-      - if: matrix.selection == 'standard' && matrix.screen == 'headless'
-        run: python -c "import sys; from pathlib import Path; sys.path.insert(0,'builder'); from compile_firmware import SDK_ASSET, package_s3_sdk; package_s3_sdk(Path('workspace/toolchain'), Path(SDK_ASSET))"
       - shell: bash
         run: |
-          variant=${{ matrix.selection }}-${{ matrix.screen }}
-          if [[ "$variant" == all-headless ]]; then variant=full; fi
           cp FLASHING.md LICENSE release-build/
           cp -R research/offline-reader/licenses release-build/
           cd release-build
           sha256sum bootloader.bin partitions.bin boot_app0.bin firmware.bin > SHA256SUMS
-          zip -r "../cardputer-adv-$variant-firmware.zip" *.bin build.json SHA256SUMS FLASHING.md LICENSE licenses
+          zip -r ../cardputer-adv-full-firmware.zip *.bin build.json SHA256SUMS FLASHING.md LICENSE licenses
       - uses: actions/upload-artifact@v4
         with:
-          name: firmware-${{ matrix.selection }}-${{ matrix.screen }}
-          path: cardputer-adv-*.zip
+          name: universal-firmware
+          path: cardputer-adv-full-firmware.zip
 
   windows-package:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -99,16 +82,19 @@ jobs:
           python-version: "3.12"
       - uses: actions/download-artifact@v4
         with:
-          pattern: firmware-*
-          merge-multiple: true
+          name: universal-firmware
           path: release-assets
       - run: python -m pip install pyserial==3.5
-      - run: python builder/catalog.py "$GITHUB_REF_NAME" release-assets
+      - run: python builder/catalog.py "$GITHUB_REF_NAME" release-assets/cardputer-adv-full-firmware.zip release-notes.md
       - uses: actions/download-artifact@v4
         with:
           name: windows-builder
           path: release-assets
-      - run: gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --generate-notes
+      - run: |
+          gh release create "$GITHUB_REF_NAME" \
+            release-assets/Cardputer-ADV-Builder-Windows-x64.zip \
+            release-assets/cardputer-adv-full-firmware.zip \
+            --verify-tag --notes-file release-notes.md --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
 

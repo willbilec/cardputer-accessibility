@@ -15,11 +15,18 @@ from zipfile import ZipFile
 from build import ROOT, STATE, build, digest, load_modules, project_lock, save_build
 from compile_firmware import PLATFORM_URL, SDK_ASSET, SDK_PACKAGE
 from flash import MIGRATION_FILES, verify_build
-from source_files import firmware_files
 
 REPOSITORY = "willbilec/cardputer-accessibility"
 GITHUB_API = f"https://api.github.com/repos/{REPOSITORY}"
 RELEASE_BASE = f"https://github.com/{REPOSITORY}/releases/download"
+SOURCE_BASE = f"https://codeload.github.com/{REPOSITORY}/zip"
+RAW_BASE = f"https://raw.githubusercontent.com/{REPOSITORY}"
+RELEASE_METADATA = "<!-- cardputer-builder-release\n"
+UNIVERSAL_FIRMWARE = "cardputer-adv-full-firmware.zip"
+SHARED_SDK = {
+    "file": SDK_ASSET, "release_tag": "v0.2.8", "size": 65860204,
+    "sha256": "515fc3fbef45858999aeccdf841a9de756d0697c4ecbec904d97e8037801961a",
+}
 
 
 def version(value):
@@ -74,6 +81,35 @@ def check_asset(asset):
         raise ValueError("Invalid asset checksum")
     if type(size) is not int or not 0 < size <= 256 * 1024**2:
         raise ValueError("Invalid release asset size")
+    if "path" in asset and any(not re.fullmatch(r"[A-Za-z0-9_.-]+", part) or part in {".", ".."}
+                               for part in asset["path"].split("/")):
+        raise ValueError("Invalid tagged source path")
+    if "release_tag" in asset:
+        version(asset["release_tag"].removeprefix("v"))
+
+
+def asset_url(catalog, asset):
+    if "path" in asset or asset.get("source_archive"):
+        commit = catalog.get("commit", "")
+        if not re.fullmatch(r"[a-f0-9]{40}", commit):
+            raise ValueError("Invalid release source commit")
+        if "path" in asset:
+            return f"{RAW_BASE}/{commit}/{asset['path']}"
+        return f"{SOURCE_BASE}/{commit}"
+    return f"{RELEASE_BASE}/{asset.get('release_tag', catalog['tag'])}/{asset['file']}"
+
+
+def release_metadata(release):
+    _, marker, data = (release.get("body") or "").partition(RELEASE_METADATA)
+    if not marker:
+        return {}
+    payload, closing, _ = data.partition("\n-->")
+    if not closing or len(payload) > 256 * 1024:
+        raise ValueError("Invalid builder release metadata")
+    metadata = json.loads(payload)
+    if not isinstance(metadata, dict):
+        raise ValueError("Invalid builder release metadata")
+    return metadata
 
 
 def check_catalog(catalog, tag):
@@ -126,20 +162,23 @@ def refresh(cache=STATE):
         release = json.load(response)
     tag = release["tag_name"]
     version(tag.removeprefix("v"))
-    expected = f"{RELEASE_BASE}/{tag}/catalog.json"
-    if expected not in {item["browser_download_url"] for item in release["assets"]}:
-        raise ValueError(f"Release {tag} has no builder catalog. Use the local source or cached catalog.")
-    with request(expected) as response:
-        payload = response.read(256 * 1024 + 1)
-    if len(payload) > 256 * 1024:
-        raise ValueError("Catalog exceeds its size limit")
-    catalog = json.loads(payload)
+    catalog = release_metadata(release).get("catalog")
+    if catalog is None:
+        expected = f"{RELEASE_BASE}/{tag}/catalog.json"
+        if expected not in {item["browser_download_url"] for item in release["assets"]}:
+            raise ValueError(f"Release {tag} has no builder catalog. Use the local source or cached catalog.")
+        with request(expected) as response:
+            payload = response.read(256 * 1024 + 1)
+        if len(payload) > 256 * 1024:
+            raise ValueError("Catalog exceeds its size limit")
+        catalog = json.loads(payload)
     check_catalog(catalog, tag)
     cache.mkdir(parents=True, exist_ok=True)
     path = cache / "catalog.json"
-    temporary = path.with_suffix(".tmp")
-    temporary.write_bytes(payload)
-    temporary.replace(path)
+    with tempfile.TemporaryDirectory(dir=cache) as staging:
+        temporary = Path(staging) / "catalog.json"
+        temporary.write_text(json.dumps(catalog), encoding="utf-8")
+        temporary.replace(path)
     return catalog
 
 
@@ -158,7 +197,7 @@ def fetch_asset(catalog, asset, cache=STATE, target=None):
         return path
     with tempfile.TemporaryDirectory(dir=path.parent) as staging:
         temporary = Path(staging) / "download"
-        with request(f"{RELEASE_BASE}/{tag}/{name}") as response, temporary.open("wb") as output:
+        with request(asset_url(catalog, asset)) as response, temporary.open("wb") as output:
             remaining = asset["size"]
             while remaining:
                 data = response.read(min(remaining, 1024 * 1024))
@@ -196,6 +235,11 @@ def source_tree(catalog, cache=STATE):
                         ":" in part or "\\" in part for part in relative.parts):
                     raise ValueError(f"Unsafe release path: {entry.filename}")
             package.extractall(tree)
+        if asset.get("source_archive"):
+            members = list(tree.iterdir())
+            if len(members) != 1 or not members[0].is_dir():
+                raise ValueError("GitHub source archive has an unexpected layout")
+            tree = members[0]
         embedded = load_modules(tree)
         keys = ("id", "name", "version", "kind")
         actual = [{key: item[key] for key in keys} for item in embedded["modules"]]
@@ -388,32 +432,39 @@ def describe_asset(path):
     return {"file": path.name, "sha256": digest(path), "size": path.stat().st_size}
 
 
-def prepare_release(tag, output):
-    from program_update import write_update_assets
+def source_asset(relative):
+    return dict(describe_asset(ROOT / relative), path=relative)
 
+
+def prepare_release(tag, firmware, notes):
+    from program_update import update_manifest
+
+    version(tag.removeprefix("v"))
     manifest = load_modules(ROOT)
     if tag != "v" + manifest["launcher"]:
         raise ValueError("Tag must match the launcher version")
-    output.mkdir(parents=True, exist_ok=True)
-    archive = output / "firmware-source.zip"
-    subprocess.check_call(["git", "archive", "--format=zip", "-o", str(archive.resolve()), tag,
-                           "--", *firmware_files(ROOT, manifest)], cwd=ROOT)
+    commit = subprocess.check_output(["git", "rev-parse", f"{tag}^{{commit}}"], cwd=ROOT, text=True).strip()
+    if commit != subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip():
+        raise ValueError("Check out the release tag before preparing its metadata")
+    with tempfile.TemporaryDirectory() as staging:
+        archive = Path(staging) / "firmware-source.zip"
+        with request(f"{SOURCE_BASE}/{commit}") as response, archive.open("wb") as stream:
+            shutil.copyfileobj(response, stream)
+        source = dict(describe_asset(archive), source_archive=True)
+    if firmware.name != UNIVERSAL_FIRMWARE:
+        raise ValueError("Unexpected universal firmware filename")
+    with ZipFile(firmware) as package:
+        identity = json.loads(package.read("build.json"))
+    if identity["launcher"] != manifest["launcher"]:
+        raise ValueError("Universal firmware has the wrong launcher version")
     catalog = {"schema": 1, "tag": tag, "launcher": manifest["launcher"],
-               "source": describe_asset(archive), "modules": [], "help_assets": {}, "precompiled": []}
-    if (output / SDK_ASSET).is_file():
-        catalog["esp32s3_sdk"] = describe_asset(output / SDK_ASSET)
-    for bundle in sorted(output.glob("cardputer-adv-*-firmware.zip")):
-        with ZipFile(bundle) as package:
-            identity = json.loads(package.read("build.json"))
-        if identity["launcher"] != manifest["launcher"]:
-            raise ValueError(f"Precompiled bundle has the wrong launcher version: {bundle.name}")
-        catalog["precompiled"].append({"asset": describe_asset(bundle),
-                                       "modules": sorted(identity["modules"]),
-                                       "screen": identity.get("screen", False)})
+               "commit": commit, "source": source, "modules": [], "help_assets": {},
+               "precompiled": [{"asset": describe_asset(firmware), "modules": sorted(identity["modules"]),
+                                "screen": identity.get("screen", False)}]}
+    if PLATFORM_URL in (ROOT / "research/offline-reader/platformio.ini").read_text(encoding="utf-8"):
+        catalog["esp32s3_sdk"] = SHARED_SDK
     for filename in ("file-manager.txt", "settings.txt"):
-        asset = output / f"help-{filename}"
-        shutil.copyfile(ROOT / "builder" / "help" / filename, asset)
-        catalog["help_assets"][filename] = describe_asset(asset)
+        catalog["help_assets"][filename] = source_asset(f"builder/help/{filename}")
     if manifest.get("supports_screen", False):
         catalog["supports_screen"] = True
     for module in manifest["modules"]:
@@ -424,34 +475,30 @@ def prepare_release(tag, output):
             if key in module:
                 entry[key] = module[key]
         if module.get("help"):
-            asset = output / f"help-{module['help']}"
-            shutil.copyfile(ROOT / "builder" / "help" / module["help"], asset)
-            entry["help_asset"] = describe_asset(asset)
+            entry["help_asset"] = source_asset(f"builder/help/{module['help']}")
         if module.get("setup_guide"):
-            setup_name = Path(module["setup_guide"]).name
-            asset = output / f"setup-{module['id']}-{setup_name}"
-            shutil.copyfile(ROOT / module["setup_guide"], asset)
-            entry["setup_guide_asset"] = describe_asset(asset)
+            entry["setup_guide_asset"] = source_asset(module["setup_guide"])
         if module.get("setup_assets"):
-            entry["setup_assets"] = {}
-            for setup_name in module["setup_assets"]:
-                asset = output / f"setup-{module['id']}-{setup_name}"
-                shutil.copyfile(ROOT / "builder" / "help" / setup_name, asset)
-                entry["setup_assets"][setup_name] = describe_asset(asset)
+            entry["setup_assets"] = {name: source_asset(f"builder/help/{name}") for name in module["setup_assets"]}
         if module.get("requires"):
             entry["requires"] = module["requires"]
         if module["kind"] == "sd":
-            asset = output / f"{module['id']}-{module['version']}.txt"
-            shutil.copyfile(ROOT / module["source"], asset)
-            entry.update(filename=module["filename"], asset=describe_asset(asset))
+            entry.update(filename=module["filename"], asset=source_asset(module["source"]))
         catalog["modules"].append(entry)
-    (output / "catalog.json").write_text(json.dumps(catalog, indent=2), encoding="utf-8")
-    write_update_assets(ROOT, tag, output)
+    check_catalog(catalog, tag)
+    metadata = json.dumps({"catalog": catalog, "update": update_manifest(ROOT, tag, commit)})
+    if "-->" in metadata:
+        raise ValueError("Release metadata contains a comment terminator")
+    notes.write_text(
+        "Download the Windows builder ZIP or the universal firmware ZIP. "
+        "The source archives include Linux builder instructions, app help, and setup scripts.\n\n"
+        + RELEASE_METADATA + metadata + "\n-->\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tag")
-    parser.add_argument("output", type=Path)
+    parser.add_argument("firmware", type=Path)
+    parser.add_argument("notes", type=Path)
     args = parser.parse_args()
-    prepare_release(args.tag, args.output)
+    prepare_release(args.tag, args.firmware, args.notes)

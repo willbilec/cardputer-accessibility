@@ -12,11 +12,12 @@ from unittest.mock import patch
 from zipfile import ZipFile
 
 from build import APP_CAPACITY, ENVIRONMENT, ROOT, build_locked, compiler_jobs, digest, generate, load_modules, resolve_components
-from catalog import build_release, describe_asset, device_update_summary, fetch_asset, install_sd, installed_version, source_tree
+from catalog import (RELEASE_METADATA, build_release, describe_asset, device_update_summary, fetch_asset, install_sd,
+                     installed_version, refresh, source_tree)
 from flash import FLASH_BYTES, MIGRATION_FILES, check_layout, find_download_port, flash, verify_build
 from source_files import firmware_files
 from progress import output_events
-from program_update import install_update, write_update_assets
+from program_update import check_update, install_update, update_manifest
 
 
 def partition_table():
@@ -149,13 +150,11 @@ class BuilderTests(unittest.TestCase):
         self.assertIn("did not report", device_update_summary(None, catalog))
 
     def test_installed_update_switches_only_the_application_overlay(self):
-        assets, state = self.root / "assets", self.root / "workspace"
-        assets.mkdir()
+        state = self.root / "workspace"
         state.mkdir()
         firmware = state / "saved-firmware.bin"
         firmware.write_bytes(b"existing firmware")
-        write_update_assets(ROOT, "v0.3.0", assets)
-        record = json.loads((assets / "builder-update.json").read_text())
+        record = update_manifest(ROOT, "v0.3.0")
 
         def download_file(url):
             name = url.rsplit("/builder/", 1)[1]
@@ -261,6 +260,42 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(load_modules(tree), manifest)
         with patch("catalog.request", side_effect=AssertionError("Network should not be used")):
             self.assertEqual(source_tree(catalog, cache), tree)
+
+    def test_compact_release_metadata_and_tagged_source_downloads(self):
+        tag, commit = "v0.3.0", "b" * 40
+        manifest = load_modules(ROOT)
+        manifest["launcher"] = "0.3.0"
+        archive = self.root / "tagged-source.zip"
+        with ZipFile(archive, "w") as source:
+            source.writestr(f"checkout-{commit}/builder/modules.json", json.dumps(manifest))
+        catalog = {
+            "schema": 1, "tag": tag, "launcher": manifest["launcher"], "commit": commit,
+            "source": dict(describe_asset(archive), source_archive=True),
+            "supports_screen": manifest["supports_screen"],
+            "modules": [{key: item[key] for key in ("id", "name", "version", "kind")}
+                        for item in manifest["modules"] if item["kind"] == "native"],
+        }
+        guide = b"help"
+        help_asset = {"file": "guide.txt", "size": len(guide), "path": "builder/help/guide.txt",
+                      "sha256": hashlib.sha256(guide).hexdigest()}
+        for item in manifest["modules"]:
+            if item["kind"] == "sd":
+                catalog["modules"].append(dict(item, asset=help_asset))
+        update = update_manifest(ROOT, tag, commit)
+        metadata = json.dumps({"catalog": catalog, "update": update})
+        response = json.dumps({"tag_name": tag, "assets": [],
+                               "body": f"Release notes\n\n{RELEASE_METADATA}{metadata}\n-->"}).encode()
+        with patch("catalog.request", return_value=io.BytesIO(response)):
+            self.assertEqual(refresh(self.root), catalog)
+        with patch("program_update.request", return_value=io.BytesIO(response)):
+            self.assertEqual(check_update(), update)
+        with patch("catalog.request", return_value=io.BytesIO(archive.read_bytes())) as download:
+            tree = source_tree(catalog, self.root)
+        self.assertTrue(download.call_args.args[0].endswith("/zip/" + commit))
+        self.assertEqual(load_modules(tree), manifest)
+        with patch("catalog.request", return_value=io.BytesIO(guide)) as download:
+            self.assertEqual(fetch_asset(catalog, help_asset, self.root).read_bytes(), guide)
+        self.assertTrue(download.call_args.args[0].endswith(commit + "/builder/help/guide.txt"))
 
     def test_installed_package_remains_available_if_upgrade_copy_fails(self):
         card, cache = self.root / "card", self.root / "cache"

@@ -5,7 +5,7 @@ from pathlib import Path
 import shutil
 import sys
 import tempfile
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZipFile
 
 UPSTREAM_VERSION = "55.03.39"
 PLATFORM_URL = ("https://github.com/pioarduino/platform-espressif32/releases/download/"
@@ -15,17 +15,6 @@ INSTALLER_TOOLS = {"toolchain-xtensa-esp-elf", "tool-esptoolpy"}
 SDK_PACKAGE = "framework-arduinoespressif32-libs"
 SDK_FULL = "https://github.com/espressif/arduino-esp32/releases/download/3.3.9/esp32-core-3.3.9-libs.tar.xz"
 SDK_ASSET = "cardputer-adv-esp32s3-sdk.zip"
-
-
-def package_s3_sdk(core, destination):
-    source = core / "packages" / SDK_PACKAGE
-    if not (source / "esp32s3/pioarduino-build.py").is_file():
-        raise ValueError("The ESP32-S3 SDK is missing its PlatformIO build script")
-    with ZipFile(destination, "x", ZIP_DEFLATED, compresslevel=5) as archive:
-        archive.write(source / "package.json", "package.json")
-        for path in sorted((source / "esp32s3").rglob("*")):
-            if path.is_file() and not path.name.endswith(".py.esp32s3"):
-                archive.write(path, path.relative_to(source))
 
 
 def install_s3_sdk(packages, spec, archive):
