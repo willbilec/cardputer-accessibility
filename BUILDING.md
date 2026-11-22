@@ -203,10 +203,12 @@ which device checks still need a physical run.
 
 Increase the version of a changed app or SD package when preparing a
 release. Set the launcher version in `builder/modules.json` and tag that
-commit `v<launcher-version>`. The
-[release workflow](.github/workflows/builder.yml) runs the builder tests,
-packages the Windows builder, and builds one universal image with
-`--preset standard`. GitHub provides the source ZIP and TAR.GZ. The builder
+commit `v<launcher-version>`. The [Firmware builder workflow](.github/workflows/builder.yml)
+runs the Windows and Linux builder tests and checks the universal firmware
+build on pull requests and pushes to `main`. Use **Run workflow** in GitHub
+Actions to check Windows packaging before tagging. A version tag builds and
+publishes the Windows builder and the universal firmware with `--preset standard`.
+GitHub provides the source ZIP and TAR.GZ. The builder
 reads catalog and updater metadata from a hidden block in the release notes
 and fetches individual help, setup, and SD files from the tagged source.
 Preserve that block when editing published release notes.

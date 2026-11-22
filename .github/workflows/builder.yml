@@ -2,6 +2,7 @@ name: Firmware builder
 
 on:
   pull_request:
+  workflow_dispatch:
   push:
     branches: [main]
     tags: ["v*"]
@@ -12,6 +13,7 @@ permissions:
 jobs:
   builder-tests:
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
@@ -21,24 +23,50 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install pyserial==3.5
-      - run: python -m unittest discover -s builder -p "test_*.py"
-      - if: runner.os == 'Linux'
+      - name: Run builder tests
+        run: python -m unittest discover -s builder -p "test_*.py"
+      - name: Test firmware input and speech
+        if: runner.os == 'Linux'
         run: |
-          g++ -std=c++17 -Wall -Wextra -Werror -Iresearch/offline-reader/include research/offline-reader/test/test_playpalace_speech.cpp -o "$RUNNER_TEMP/test_playpalace_speech"
-          "$RUNNER_TEMP/test_playpalace_speech"
+          cd research/offline-reader
+          for test in global_shortcuts headless_board playpalace_speech; do
+            g++ -std=c++17 -Wall -Wextra -Werror -Iinclude -Itest/headless_fakes "test/test_$test.cpp" -o "$RUNNER_TEMP/test_$test"
+            "$RUNNER_TEMP/test_$test"
+          done
 
   firmware:
-    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Cache the pinned PlatformIO toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            workspace/toolchain/packages
+            workspace/toolchain/platforms
+          key: platformio-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('research/offline-reader/platformio.ini', 'builder/requirements.txt') }}
       - run: python -m pip install platformio==6.2.0 pyserial==3.5
-      - run: python builder/build.py release-build --preset standard --check-codecs
+      - name: Build and check the release firmware
+        shell: bash
+        run: |
+          log="$RUNNER_TEMP/firmware-build.log"
+          for attempt in 1 2 3; do
+            if python builder/build.py release-build --preset standard --check-codecs 2>&1 | tee "$log"; then
+              exit 0
+            fi
+            if [[ "$attempt" == 3 ]] || ! grep -Eqi 'ConnectTimeoutError|ReadTimeoutError|ConnectionResetError|connection to .* timed out|temporary failure in name resolution|could not resolve host|HTTP (502|503|504)' "$log"; then
+              exit 1
+            fi
+            echo "::warning::A dependency download failed. Retrying the firmware build."
+            sleep "$((attempt * 10))"
+          done
       - run: python -c "import sys; from pathlib import Path; sys.path.insert(0,'builder'); from flash import check_layout; check_layout(Path('release-build/partitions.bin').read_bytes())"
       - shell: bash
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           cp FLASHING.md LICENSE release-build/
           cp -R research/offline-reader/licenses release-build/
@@ -46,14 +74,15 @@ jobs:
           sha256sum bootloader.bin partitions.bin boot_app0.bin firmware.bin > SHA256SUMS
           zip -r ../cardputer-adv-full-firmware.zip *.bin build.json SHA256SUMS FLASHING.md LICENSE licenses
       - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           name: universal-firmware
           path: cardputer-adv-full-firmware.zip
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
 
   windows-package:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,7 +97,7 @@ jobs:
         with:
           name: windows-builder
           path: Cardputer-ADV-Builder-Windows-x64.zip
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
 
   release:

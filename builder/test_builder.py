@@ -49,9 +49,10 @@ class BuilderTests(unittest.TestCase):
 
         project = self.root / "firmware"
         generated = project / "builder.ini"
+        catalog = load_modules(ROOT, include_local=False)
         with patch("build.generate", return_value=(generated, {}, self.root)):
             with self.assertRaises(StopIteration):
-                build_locked(self.root, project, {}, [], self.root / "output", run, True, False)
+                build_locked(self.root, project, catalog, [], self.root / "output", run, True, False)
         self.assertEqual(commands, [
             str(self.root / "fetch_dependencies.py"),
             str(project / "prepare_background.py"),
@@ -66,7 +67,8 @@ class BuilderTests(unittest.TestCase):
         (project / "src").mkdir()
         for name in ("nvda_remote.cpp", "nvda_tls.cpp"):
             (project / "src" / name).touch()
-        config, identity, _ = generate(project, load_modules(ROOT), ["nvda-remote"])
+        catalog = load_modules(ROOT, include_local=False)
+        config, identity, _ = generate(project, catalog, ["nvda-remote"])
         self.assertEqual(list(identity["modules"]), ["nvda-remote"])
         section = config.read_text(encoding="utf-8").split(f"[env:{ENVIRONMENT}]", 1)[1]
         self.assertIn("+<nvda_remote.cpp>", section)
@@ -79,21 +81,21 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(identity["components"], ["json"])
         self.assertNotIn("UNIFIED_DIAGNOSTICS=1", section.split("build_flags", 1)[1])
         with self.assertRaisesRegex(ValueError, "Unknown native"):
-            generate(project, load_modules(ROOT), ["nonexistent"])
+            generate(project, catalog, ["nonexistent"])
 
     def test_screen_build_adds_display_driver_and_identity(self):
         project = self.root / "project"
         project.mkdir()
         original = ROOT / "research/offline-reader"
         (project / "platformio.ini").write_bytes((original / "platformio.ini").read_bytes())
-        config, identity, _ = generate(project, load_modules(ROOT), [], screen=True)
+        config, identity, _ = generate(project, load_modules(ROOT, include_local=False), [], screen=True)
         section = config.read_text(encoding="utf-8").split(f"[env:{ENVIRONMENT}]", 1)[1]
         self.assertIn("-DUNIFIED_SCREEN=1", section)
         self.assertIn("symlink://../M5GFX", section)
         self.assertIs(identity["screen"], True)
 
     def test_shared_components_follow_only_selected_consumers(self):
-        catalog = load_modules(ROOT)
+        catalog = load_modules(ROOT, include_local=False)
         components = catalog["components"]
         modules = {item["id"]: item for item in catalog["modules"]}
         def selected(*names):
@@ -115,7 +117,7 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(compiler_jobs(4, 512 * 1024**2), 1)
 
     def test_release_source_includes_transitive_headers_without_research_experiments(self):
-        files = firmware_files(ROOT, load_modules(ROOT))
+        files = firmware_files(ROOT, load_modules(ROOT, include_local=False))
         self.assertIn("research/offline-reader/include/file_playback_formats.h", files)
         self.assertIn("research/offline-reader/src/micro_vorbis_demux.cpp", files)
         self.assertIn("research/offline-reader/src/unified_bible.inc", files)
@@ -245,7 +247,7 @@ class BuilderTests(unittest.TestCase):
         identify.assert_called_once_with("COM4")
 
     def test_release_source_is_verified_and_reused_offline(self):
-        manifest = load_modules(ROOT)
+        manifest = load_modules(ROOT, include_local=False)
         records = [{key: item[key] for key in ("id", "name", "version", "kind")}
                    for item in manifest["modules"]]
         archive = self.root / "source.zip"
@@ -265,7 +267,7 @@ class BuilderTests(unittest.TestCase):
 
     def test_compact_release_metadata_and_tagged_source_downloads(self):
         tag, commit = "v0.3.0", "b" * 40
-        manifest = load_modules(ROOT)
+        manifest = load_modules(ROOT, include_local=False)
         manifest["launcher"] = "0.3.0"
         archive = self.root / "tagged-source.zip"
         with ZipFile(archive, "w") as source:
