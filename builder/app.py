@@ -10,7 +10,7 @@ from uuid import uuid4
 import wx
 from wx.lib.scrolledpanel import ScrolledPanel
 
-from build import NO_CONSOLE, ROOT, build, load_modules
+from build import NO_CONSOLE, ROOT, build, load_modules, project_lock, trim_saved_builds
 from catalog import (STATE, build_release, cached_catalog, device_update_summary, install_sd,
                      installed_version, refresh, saved_builds, version)
 from flash import flash, ports, read_identity, same_usb_device
@@ -444,9 +444,12 @@ class Builder(wx.Frame):
         return approved
 
     def flash_output(self, port, output, **options):
-        return flash(port, output, report=lambda line: wx.CallAfter(self.report, line),
-                     confirm=lambda *device: self.confirm_flash(output, *device),
-                     recommend_migration=self.recommend_migration, **options)
+        details = []
+        with project_lock(STATE / "builds"):
+            mac = flash(port, output, report=lambda line: wx.CallAfter(self.report, line),
+                        confirm=lambda *device: self.confirm_flash(output, *device),
+                        recommend_migration=self.recommend_migration, help_result=details.append, **options)
+        return "\n".join(["Firmware flashed and launcher verified.", *details]) if mac else None
 
     def recommend_migration(self):
         finished = threading.Event()
@@ -498,7 +501,7 @@ class Builder(wx.Frame):
         if port is None:
             return
         self.work("Verifying saved build.", lambda: self.flash_output(port, output),
-                  lambda mac: self.notify("Firmware flashed and launcher verified." if mac else "Flash cancelled."))
+                  lambda result: self.notify(result or "Flash cancelled."))
 
     def start_build(self, action, *, selected=None, port=None, backup=None):
         current = self.selected_catalog()
@@ -524,6 +527,7 @@ class Builder(wx.Frame):
             else:
                 build(ROOT, selected, output, run=self.command, screen=screen, include_help=include_help)
                 bundle = output
+            trim_saved_builds(bundle)
             if port is not None:
                 wx.CallAfter(self.report, f"USB recovery files: {bundle}")
                 return bundle, self.flash_output(port, bundle, allow_migration=action == "migrate", backup=backup)
@@ -536,20 +540,8 @@ class Builder(wx.Frame):
             if not result:
                 description = "Flash cancelled. The build is ready."
             else:
-                description = "Build completed." if action == "build" else "Firmware flashed and launcher verified."
+                description = "Build completed." if action == "build" else result
             self.notify(f"{description}\n\nBuild files: {output}")
-            help_dir = output / "sdcard" / "Help"
-            if help_dir.is_dir() and wx.MessageBox(
-                    "Copy the selected app help files to a mounted microSD card now?",
-                    "Copy help files to microSD", wx.YES_NO | wx.NO_DEFAULT, self) == wx.YES:
-                with wx.DirDialog(self, "Choose the mounted Cardputer microSD card",
-                                  style=wx.DD_DIR_MUST_EXIST) as picker:
-                    if picker.ShowModal() == wx.ID_OK:
-                        card_help = Path(picker.GetPath()) / "Help"
-                        card_help.mkdir(parents=True, exist_ok=True)
-                        for source in help_dir.glob("*.txt"):
-                            (card_help / source.name).write_bytes(source.read_bytes())
-                        self.notify(f"Copied {len(list(help_dir.glob('*.txt')))} help files to {card_help}.")
         self.work("Building firmware.", perform, done)
 
     def update_firmware(self, _):

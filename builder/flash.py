@@ -160,8 +160,85 @@ def verify_build(directory):
     return manifest
 
 
+def help_response(link):
+    line = link.read_until(size=1024)
+    if not line.endswith(b"\n"):
+        raise ValueError("The Cardputer did not reply over USB")
+    return line.rstrip(b"\r\n").decode("ascii")
+
+
+def help_command(link, command):
+    link.write((command + "\n").encode("ascii"))
+    return help_response(link)
+
+
+def expect_help_ok(response):
+    if response != "OK":
+        raise ValueError(response.removeprefix("ERR "))
+
+
+def compare_help(link, remote, contents):
+    response = help_command(link, "READ " + remote)
+    if response == "ERR File unavailable":
+        return None
+    if not response.startswith("OK "):
+        raise ValueError(response.removeprefix("ERR "))
+    if int(response[3:]) != len(contents):
+        expect_help_ok(help_command(link, "CANCEL"))
+        return False
+    offset = 0
+    while (response := help_command(link, "NEXT")) != "END":
+        if not response.startswith("DATA "):
+            raise ValueError(response.removeprefix("ERR "))
+        data = bytes.fromhex(response[5:])
+        if not data or data != contents[offset:offset + len(data)]:
+            expect_help_ok(help_command(link, "CANCEL"))
+            return False
+        offset += len(data)
+    return offset == len(contents)
+
+
+def copy_help_to_card(port, directory, manifest):
+    documents = []
+    for name in manifest["help_documents"]:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,70}\.txt", name):
+            raise ValueError("Invalid build help filename")
+        relative = f"sdcard/Help/{name}"
+        data = (directory / relative).read_bytes()
+        if not 0 < len(data) <= 65536 or hashlib.sha256(data).hexdigest() != manifest["sha256"].get(relative):
+            raise ValueError(f"Invalid help file or checksum mismatch: {name}")
+        documents.append((name, data))
+    with serial.Serial(port, 115200, timeout=3, write_timeout=3) as link:
+        link.reset_input_buffer()
+        response = help_command(link, "UF_HELP")
+        if response != "CARDFILES HELP 1":
+            raise ValueError(response.removeprefix("ERR "))
+        try:
+            expect_help_ok(help_command(link, "MKDIR " + b"/Help".hex()))
+            for name, data in documents:
+                remote = ("/Help/" + name).encode("ascii").hex()
+                present = compare_help(link, remote, data)
+                if present:
+                    continue
+                operation = "PUT" if present is None else "REPLACE"
+                expect_help_ok(help_command(link, f"{operation} {len(data)} {remote}"))
+                for offset in range(0, len(data), 2048):
+                    link.write(data[offset:offset + 2048])
+                    expect_help_ok(help_response(link))
+                if compare_help(link, remote, data) is not True:
+                    raise ValueError(f"Readback failed for {name}")
+            expect_help_ok(help_command(link, "DONE"))
+        except (OSError, ValueError):
+            try:
+                help_command(link, "DONE")
+            except (OSError, ValueError):
+                pass
+            raise
+    return len(documents)
+
+
 def flash(selected, directory, *, allow_migration=False, backup=None, report=print, confirm=None,
-          recommend_migration=None):
+          recommend_migration=None, help_result=None):
     manifest = verify_build(directory)
     app = directory / "firmware.bin"
     report("Entering USB download mode.")
@@ -219,9 +296,21 @@ def flash(selected, directory, *, allow_migration=False, backup=None, report=pri
             elif download is None and candidate.device not in {port, selected}:
                 continue
             try:
-                if read_identity(candidate.device) == expected:
-                    return mac
+                verified = read_identity(candidate.device) == expected
             except (OSError, ValueError):
                 continue
+            if verified:
+                if manifest.get("help_documents"):
+                    report("Copying help files to the Cardputer microSD over USB.")
+                    try:
+                        count = copy_help_to_card(candidate.device, directory, manifest)
+                        message = f"Verified {count} help files in /Help on the microSD card."
+                    except (OSError, ValueError) as error:
+                        message = (f"Help copy could not finish. {error}. "
+                                   f"The help files are saved in {directory / 'sdcard/Help'}.")
+                    report(message)
+                    if help_result is not None:
+                        help_result(message)
+                return mac
         time.sleep(0.25)
     raise RuntimeError("Flash verified, but the launcher did not report the expected version after reboot.")

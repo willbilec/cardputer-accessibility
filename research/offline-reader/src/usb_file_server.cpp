@@ -23,6 +23,18 @@ constexpr size_t streamCapacity=4096;
 std::unique_ptr<uint8_t[]> streamBuffer;
 size_t streamRemaining=0, streamSize=0, streamSent=0;
 uint32_t lastCommand=0;
+#ifdef UNIFIED_BUILDER_HELP_UPLOAD
+bool helpOnly=false, helpFinished=false;
+
+bool helpFile(const String &path){
+ if(!path.startsWith("/Help/")||!path.endsWith(".txt")||path.length()>80||path.length()<=10)return false;
+ for(size_t i=6;i<path.length()-4;++i){
+  const char ch=path[i];
+  if(!((ch>='a'&&ch<='z')||(ch>='A'&&ch<='Z')||(ch>='0'&&ch<='9')||ch=='-'||ch=='_'))return false;
+ }
+ return true;
+}
+#endif
 #ifdef UNIFIED_WIFI_SD
 constexpr uint16_t sharePort=47631;
 constexpr char discoverRequest[]="CARDFILES DISCOVER 1";
@@ -206,6 +218,9 @@ void handle(const char *line){
   return;
  }
 #endif
+#ifdef UNIFIED_BUILDER_HELP_UPLOAD
+ if(helpOnly&&!strcmp(line,"DONE")){cancel();helpFinished=true;respond("OK");return;}
+#endif
  if(!strcmp(line,"HELLO")){cancel();respond("CARDFILES 1");return;}
  if(!strcmp(line,"CANCEL")){cancel();respond("OK");return;}
  if(!strcmp(line,"NEXT")){next();return;}
@@ -221,6 +236,9 @@ void handle(const char *line){
  }
  if(operation!=Operation::Idle){respond("ERR Finish or cancel the current operation");return;}
  if(!strncmp(line,"TIME ",5)){
+#ifdef UNIFIED_BUILDER_HELP_UPLOAD
+  if(helpOnly){respond("ERR Help transfer only");return;}
+#endif
 #ifdef UNIFIED_WIFI_SD
   if(networkMode){respond("ERR Clock changes require USB");return;}
 #endif
@@ -248,6 +266,19 @@ void handle(const char *line){
  if(newPath)source=String(arg+1).substring(0,newPath-arg-1);
  String path;
  if(!arg||!readPath(newPath?source.c_str():arg+1,path)){respond("ERR Invalid command or path");return;}
+#ifdef UNIFIED_BUILDER_HELP_UPLOAD
+ if(helpOnly){
+  if(!strcmp(line,"MKDIR 2f48656c70")){
+   File folder=SD.open("/Help",FILE_READ);
+   const bool ok=folder?folder.isDirectory():SD.mkdir("/Help");
+   respond(ok?"OK":"ERR Could not open or create the SD Help folder");return;
+  }
+  if(!helpFile(path)||(!streamUpload&&strncmp(line,"READ ",5))||
+     (streamUpload&&(!uploadSize||uploadSize>65536))){
+   respond("ERR Expected a Help text file of at most 64 KiB");return;
+  }
+ }
+#endif
  const bool streamDownload=!strncmp(line,"GET ",4);
  if(!strncmp(line,"LIST ",5)||!strncmp(line,"READ ",5)||streamDownload){
   bool listing=line[0]=='L';
@@ -327,6 +358,9 @@ void startUsbSD(bool writable,bool (*setTime)(int64_t)){
 void stopUsbSD(){
  cancel();reply="";inputSize=sent=0;overflow=false;
  setClock=nullptr;
+#ifdef UNIFIED_BUILDER_HELP_UPLOAD
+ helpOnly=helpFinished=false;
+#endif
 }
 
 void pollUsbSD(){
@@ -361,6 +395,28 @@ void pollUsbSD(){
   }
  }
 }
+
+#ifdef UNIFIED_BUILDER_HELP_UPLOAD
+void startUsbHelp(bool cardReady){
+ startUsbSD(true,nullptr);
+ helpOnly=true;
+ helpFinished=!cardReady;
+ respond(cardReady?"CARDFILES HELP 1":"ERR No microSD card is mounted");
+}
+
+bool pollUsbHelp(){
+ if(!helpOnly)return false;
+ if((helpFinished&&sent==reply.length())||millis()-lastCommand>15000){
+  stopUsbSD();return false;
+ }
+ pollUsbSD();
+ return true;
+}
+
+void stopUsbHelp(){
+ if(helpOnly)stopUsbSD();
+}
+#endif
 
 #ifdef UNIFIED_WIFI_SD
 bool startWifiSD(const char *code){

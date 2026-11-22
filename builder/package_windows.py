@@ -8,6 +8,7 @@ import shutil
 import site
 import subprocess
 import sys
+import tempfile
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from build import ROOT, load_modules
@@ -23,7 +24,24 @@ def package(output, with_source=False):
     if not compiler.is_file():
         raise SystemExit("The Windows .NET Framework C# compiler is required.")
     output = output.resolve()
-    output.mkdir(parents=True, exist_ok=False)
+    archive = output.with_name(output.name + ".zip")
+    if archive.exists():
+        raise FileExistsError(archive)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=output.parent) as staging:
+        tree = Path(staging) / output.name
+        stage_package(tree, base, compiler, with_source)
+        pending = Path(staging) / archive.name
+        with ZipFile(pending, mode="x", compression=ZIP_DEFLATED, compresslevel=5) as package_file:
+            for path in sorted(tree.rglob("*")):
+                if path.is_file():
+                    package_file.write(path, path.relative_to(tree.parent))
+        pending.rename(archive)
+    print(archive)
+
+
+def stage_package(output, base, compiler, with_source):
+    output.mkdir()
     runtime = output / "runtime"
     runtime.mkdir()
     for name in ("python.exe", "pythonw.exe", "python3.dll", "LICENSE.txt"):
@@ -38,7 +56,7 @@ def package(output, with_source=False):
     shutil.copytree(dependencies, runtime / "Lib/site-packages",
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     subprocess.check_call([
-        str(runtime / "python.exe"), "-I", "-c",
+        str(runtime / "python.exe"), "-I", "-B", "-c",
         "import platformio.test; from platformio.run.processor import EnvironmentProcessor",
     ], stdout=subprocess.DEVNULL)
 
@@ -61,12 +79,6 @@ def package(output, with_source=False):
         f"/out:{output / 'Cardputer ADV Firmware Builder.exe'}",
         str(ROOT / "builder/WindowsLauncher.cs"),
     ])
-    archive = output.with_name(output.name + ".zip")
-    with ZipFile(archive, mode="x", compression=ZIP_DEFLATED, compresslevel=5) as package_file:
-        for path in sorted(output.rglob("*")):
-            if path.is_file():
-                package_file.write(path, path.relative_to(output.parent))
-    print(archive)
 
 
 if __name__ == "__main__":

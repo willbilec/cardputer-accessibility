@@ -78,7 +78,8 @@ selected, Settings, and Browse SD card over USB or Wi-Fi when included. The
 optional Help menu appears when the build includes Keyboard learning or help
 text. Keyboard learning describes pressed keys without sending them to
 another computer. Help documents are read from the SD card's `/Help/`
-folder after you copy them there. In Voice recorder, Enter starts
+folder. Backspace returns from a document to the Help list and from the
+Help list to Home. In Voice recorder, Enter starts
 recording and Enter again saves it.
 Space pauses or resumes recording or preview playback. A high beep signals
 start or resume, and a low beep signals pause or the end of playback.

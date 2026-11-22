@@ -6,6 +6,11 @@ constexpr unsigned usbSDBurstSize=2048;
 void startUsbSD(bool writable, bool (*setTime)(int64_t));
 void stopUsbSD();
 void pollUsbSD();
+#ifdef UNIFIED_BUILDER_HELP_UPLOAD
+void startUsbHelp(bool cardReady);
+bool pollUsbHelp();
+void stopUsbHelp();
+#endif
 
 #ifdef UNIFIED_WIFI_SD
 constexpr bool wifiSDEnabled=true;

@@ -466,6 +466,9 @@ bool recordingActive=false,recordingPaused=false,recordingPreview=false;
 bool previewPlaying=false,recordingPlayback=false,confirmRecordingDelete=false,previewKeyArmed=false;
 constexpr size_t scratchBytes=4096;
 constexpr char textHelp[]="Period or Enter reads the next section. Semicolon goes back. Space rereads. Comma starts over. Backspace returns to files.";
+#ifdef CARDPUTER_HELP_MENU
+constexpr char helpTextHelp[]="Period or Enter reads the next section. Semicolon goes back. Space rereads. Comma starts over. Backspace returns to the Help menu.";
+#endif
 #ifdef CARDPUTER_COMPRESSED_MEDIA
 constexpr size_t compressedMixerFrames=512;
 constexpr size_t compressedMixerBuffers=4;
@@ -1605,7 +1608,13 @@ bool global(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State&s){
  case Command::Stop:stopSpeech();break;
  case Command::Repeat:{String previous=lastSpoken;bool sensitive=lastSensitive;say(previous,sensitive);break;}
  case Command::Help:
-  if(page==Page::Text)say(textHelp);
+  if(page==Page::Text){
+#ifdef CARDPUTER_HELP_MENU
+   say(textReturnPage==Page::Help?helpTextHelp:textHelp);
+#else
+   say(textHelp);
+#endif
+  }
 #ifdef CARDPUTER_SYNTH_APP
   else if(page==Page::Synth)say(synthHelp);
 #endif
@@ -1660,7 +1669,7 @@ void openHelpDocument(const String &name){
  textStart=utf8Bom?3:0;
  if(!textFile.seek(textStart)){textFile.close();say("Could not read help document");return;}
  textHistoryCount=0;textChunk="";textReturnPage=Page::Help;page=Page::Text;
- say(name+". "+(textFile.available()?String(textHelp):String("Empty help document")));
+ say(name+". "+(textFile.available()?String(helpTextHelp):String("Empty help document. Backspace returns to the Help menu.")));
 }
 #endif
 #ifdef CARDPUTER_KEYBOARD_APP
@@ -2240,6 +2249,9 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
 #endif
  if((escape||backspace)&&page==Page::Settings){page=Page::SettingsCategories;selection=category;focus();return;}
  if((escape||backspace)&&page==Page::SettingsCategories){page=Page::Home;selection=settingsHomeIndex;focus();return;}
+#ifdef CARDPUTER_HELP_MENU
+ if((escape||backspace)&&page==Page::Help){homePage();return;}
+#endif
  int setting=-1;
  switch(page){
  case Page::WifiList:case Page::WifiScan:setting=0;break;
@@ -2738,14 +2750,30 @@ void loop(){
   moveMenu(arrow,true);
  }
 #ifdef UNIFIED_CUSTOM_BUILD
- // The production USB command reports build metadata only.
+ // The builder identifies the launcher and can hand off to a Help-only session.
  static unsigned identityMatch=0;
  static size_t identitySent=0;
  static bool identityPending=false;
  constexpr char identityCommand[]="UF_ID\n";
  constexpr char identityReply[]="UF_ID " UNIFIED_BUILD_IDENTITY "\n";
- while(page!=Page::UsbSD&&Serial.available()){
+#ifdef UNIFIED_BUILDER_HELP_UPLOAD
+ static unsigned helpMatch=0;
+ constexpr char helpCommand[]="UF_HELP\n";
+ if(page!=Page::Home)stopUsbHelp();
+ const bool helpTransfer=page==Page::Home&&pollUsbHelp();
+#else
+ constexpr bool helpTransfer=false;
+#endif
+ for(unsigned n=0;n<128&&!helpTransfer&&page!=Page::UsbSD&&Serial.available();++n){
   const int ch=Serial.read();
+#ifdef UNIFIED_BUILDER_HELP_UPLOAD
+  if(ch==helpCommand[helpMatch]){
+   if(++helpMatch==sizeof(helpCommand)-1){
+    helpMatch=0;
+    if(ready&&page==Page::Home){identityMatch=0;identityPending=false;startUsbHelp(sdReady);break;}
+   }
+  }else helpMatch=ch==helpCommand[0]?1:0;
+#endif
   if(ch==identityCommand[identityMatch]){
    if(++identityMatch==sizeof(identityCommand)-1){
     if(ready&&!identityPending){identitySent=0;identityPending=true;}
@@ -2753,7 +2781,7 @@ void loop(){
    }
   }else identityMatch=ch==identityCommand[0]?1:0;
  }
- if(page!=Page::UsbSD&&identityPending){
+ if(!helpTransfer&&page!=Page::UsbSD&&identityPending){
   const int space=Serial.availableForWrite();
   if(space>0){
    const size_t bytes=std::min<size_t>(space,sizeof(identityReply)-1-identitySent);

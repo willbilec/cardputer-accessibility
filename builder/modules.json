@@ -2,6 +2,7 @@
   "schema": 1,
   "launcher": "0.2.9",
   "supports_screen": true,
+  "supports_usb_help": true,
   "components": {
     "media-decoder": {
       "sources": ["media_decoder.cpp"]

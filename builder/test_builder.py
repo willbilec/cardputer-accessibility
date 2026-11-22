@@ -11,10 +11,11 @@ import unittest
 from unittest.mock import patch
 from zipfile import ZipFile
 
-from build import APP_CAPACITY, ENVIRONMENT, ROOT, build_locked, compiler_jobs, digest, generate, load_modules, resolve_components
+from build import (APP_CAPACITY, ENVIRONMENT, ROOT, build_locked, compiler_jobs, digest, generate,
+                   load_modules, resolve_components, trim_compiler_objects, trim_saved_builds)
 from catalog import (RELEASE_METADATA, build_release, describe_asset, device_update_summary, fetch_asset, install_sd,
                      installed_version, refresh, source_tree)
-from flash import FLASH_BYTES, MIGRATION_FILES, check_layout, find_download_port, flash, verify_build
+from flash import FLASH_BYTES, MIGRATION_FILES, check_layout, copy_help_to_card, find_download_port, flash, verify_build
 from source_files import firmware_files
 from progress import output_events
 from program_update import check_update, install_update, update_manifest
@@ -253,7 +254,8 @@ class BuilderTests(unittest.TestCase):
             source.writestr("fetch_dependencies.py", "# archived dependency script")
         catalog = {"tag": "v" + manifest["launcher"], "launcher": manifest["launcher"],
                    "modules": records, "source": describe_asset(archive),
-                   "supports_screen": manifest["supports_screen"]}
+                   "supports_screen": manifest["supports_screen"],
+                   "supports_usb_help": manifest["supports_usb_help"]}
         cache = self.root / "cache"
         with patch("catalog.request", return_value=io.BytesIO(archive.read_bytes())):
             tree = source_tree(catalog, cache)
@@ -272,6 +274,7 @@ class BuilderTests(unittest.TestCase):
             "schema": 1, "tag": tag, "launcher": manifest["launcher"], "commit": commit,
             "source": dict(describe_asset(archive), source_archive=True),
             "supports_screen": manifest["supports_screen"],
+            "supports_usb_help": manifest["supports_usb_help"],
             "modules": [{key: item[key] for key in ("id", "name", "version", "kind")}
                         for item in manifest["modules"] if item["kind"] == "native"],
         }
@@ -359,11 +362,72 @@ class BuilderTests(unittest.TestCase):
         writes = [args for command, args in history if command == "write-flash"]
         self.assertEqual(writes, [("--flash-size", "8MB", 0x10000, directory / "firmware.bin")])
 
+    def test_help_copy_creates_one_file_and_verifies_readback(self):
+        from unittest.mock import MagicMock, call
+
+        directory = self.root / "sdcard/Help"
+        directory.mkdir(parents=True)
+        data = b"Help\n"
+        (directory / "test.txt").write_bytes(data)
+        manifest = {"help_documents": ["test.txt"],
+                    "sha256": {"sdcard/Help/test.txt": hashlib.sha256(data).hexdigest()}}
+        serial = MagicMock()
+        link = serial.return_value.__enter__.return_value
+        link.read_until.side_effect = [
+            b"CARDFILES HELP 1\n", b"OK\n", b"ERR File unavailable\n", b"OK\n",
+            b"OK\n", b"OK 5\n", b"DATA " + data.hex().encode() + b"\n", b"END\n", b"OK\n",
+        ]
+        with patch("flash.serial.Serial", serial):
+            self.assertEqual(copy_help_to_card("COM6", self.root, manifest), 1)
+        remote = b"/Help/test.txt".hex().encode()
+        self.assertEqual(link.write.call_args_list, [
+            call(b"UF_HELP\n"), call(b"MKDIR 2f48656c70\n"), call(b"READ " + remote + b"\n"),
+            call(b"PUT 5 " + remote + b"\n"), call(data), call(b"READ " + remote + b"\n"),
+            call(b"NEXT\n"), call(b"NEXT\n"), call(b"DONE\n"),
+        ])
+
+    def test_flash_reports_help_copy_failure_separately(self):
+        directory, history = self._flash_fixture(True)
+        path = directory / "build.json"
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        manifest["help_documents"] = ["test.txt"]
+        path.write_text(json.dumps(manifest), encoding="utf-8")
+        status = []
+        def unavailable(port, bundle, record):
+            self.assertEqual(history[-1][0], "flash-id")
+            raise ValueError("No microSD card is mounted")
+        with patch("flash.copy_help_to_card", side_effect=unavailable):
+            self.assertEqual(flash("COM4", directory, report=lambda _: None, help_result=status.append), "mac")
+        self.assertIn("No microSD card is mounted", status[0])
+
     def test_routine_update_rejects_other_layout(self):
         directory, history = self._flash_fixture(False)
         with self.assertRaisesRegex(ValueError, "Partition table differs"):
             flash("COM4", directory, report=lambda _: None)
         self.assertFalse(any(command == "write-flash" for command, _ in history))
+
+    def test_automatic_build_retention_preserves_current_fallback_and_named_exports(self):
+        builds = [self.root / f"20261121-00000{index}-12345678" for index in range(4)]
+        exported = self.root / "custom-recovery"
+        for directory in [*builds, exported]:
+            directory.mkdir()
+            (directory / "build.json").write_text("{}", encoding="utf-8")
+        trim_saved_builds(builds[1])
+        self.assertEqual({x.name for x in self.root.iterdir() if x.name != ".pio"},
+                         {builds[1].name, builds[3].name, exported.name})
+
+    def test_compiler_prunes_scons_objects_to_the_budget(self):
+        (self.root / "platformio.ini").write_text("[platformio]\n", encoding="utf-8")
+        bucket = self.root / ".pio/buildcache/c9"
+        bucket.mkdir(parents=True)
+        old, recent = [bucket / ("c9" + digit * 28) for digit in ("a", "b")]
+        old.write_bytes(b"old")
+        recent.write_bytes(b"recent")
+        import os
+        os.utime(old, (1, 1))
+        trim_compiler_objects(self.root, limit=6)
+        self.assertFalse(old.exists())
+        self.assertTrue(recent.exists())
 
     def test_migration_verifies_backup_before_writing_all_regions(self):
         directory, history = self._flash_fixture(False)

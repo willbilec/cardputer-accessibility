@@ -2,7 +2,7 @@
 
 import argparse
 from configparser import ConfigParser
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import ctypes
 import hashlib
 import io
@@ -15,7 +15,7 @@ import subprocess
 import sys
 import tempfile
 
-from compile_firmware import trim_installer_cache
+from compile_firmware import trim_installer_cache, trim_installer_downloads
 
 ROOT = Path(os.environ.get("CARDPUTER_BUILDER_ROOT", Path(__file__).resolve().parents[1]))
 STATE = ROOT / "workspace"
@@ -54,6 +54,42 @@ def compiler_jobs(cpu_count, free_bytes):
 
 def object_directory(project):
     return project / ".pio/builder-objects" / digest(project / "platformio.ini")[:16]
+
+
+def trim_saved_builds(current):
+    parent = current.parent.resolve()
+    with project_lock(parent):
+        managed = sorted((item for item in parent.iterdir()
+                          if re.fullmatch(r"[0-9]{8}-[0-9]{6}-[a-f0-9]{8}", item.name)
+                          and item.resolve() == item and (item / "build.json").is_file()), reverse=True)
+        current = current.resolve()
+        previous = next((item for item in managed if item != current), None)
+        for item in managed:
+            if item not in {current, previous}:
+                shutil.rmtree(item, ignore_errors=True)
+
+
+def trim_compiler_objects(project, limit=512 * 1024**2):
+    active = object_directory(project)
+    for folder in active.parent.glob("*"):
+        if folder != active and re.fullmatch(r"[0-9a-f]{16}", folder.name) and folder.resolve() == folder:
+            shutil.rmtree(folder, ignore_errors=True)
+    cache = project / ".pio/buildcache"
+    objects = []
+    for folder in cache.glob("[0-9A-Fa-f][0-9A-Fa-f]"):
+        if not folder.is_dir() or folder.resolve() != folder:
+            continue
+        for path in folder.iterdir():
+            # SCons can store the first two hash digits in the directory name.
+            if path.is_file() and re.fullmatch(r"[0-9a-f]{30,64}", path.name, re.I):
+                info = path.stat()
+                objects.append((info.st_mtime, info.st_size, path))
+    size = sum(info[1] for info in objects)
+    for _, length, path in sorted(objects):
+        if size <= limit:
+            break
+        path.unlink(missing_ok=True)
+        size -= length
 
 
 def write_changed(path, contents, encoding="utf-8"):
@@ -146,6 +182,8 @@ def generate(project, catalog, selected, screen=False, include_help=False):
     components = resolve_components(catalog["components"], active)
     if include_help:
         flags = ["-DUNIFIED_HELP_MENU=1"]
+        if catalog.get("supports_usb_help", False):
+            flags.append("-DUNIFIED_BUILDER_HELP_UPLOAD=1")
     else:
         flags = []
     config = ConfigParser(interpolation=None)
@@ -155,6 +193,8 @@ def generate(project, catalog, selected, screen=False, include_help=False):
     config["platformio"]["libdeps_dir"] = str(project / ".pio/builder-libdeps")
     config["platformio"]["build_dir"] = str(object_directory(project))
     sources = ["+<unified.cpp>", "+<headless_board.cpp>", "+<unified_hid.cpp>"]
+    if "-DUNIFIED_BUILDER_HELP_UPLOAD=1" in flags:
+        sources.append("+<usb_file_server.cpp>")
     flags = [*flags,
         "${env:backgroundaudio-minimal.build_flags}", "-Os", "-DARDUINO_USB_MODE=0",
         "-DUNIFIED_RESERVED_PHONEMES=1", "-I generated", "-DUNIFIED_CUSTOM_BUILD=1",
@@ -256,9 +296,17 @@ def build_locked(root, project, catalog, selected, destination, run, fetch, chec
                 else ["-m", "platformio"])
     if managed and sdk_archive:
         launcher.extend(["--sdk-archive", str(sdk_archive.resolve())])
-    run([str(PYTHON), "-u", *launcher, "run", "--project-dir", str(project),
-         "--project-conf", str(config), "--disable-auto-clean", "-e", ENVIRONMENT,
-         "-j", str(jobs)], cwd=project)
+    with project_lock(core) if managed else nullcontext():
+        try:
+            run([str(PYTHON), "-u", *launcher, "run", "--project-dir", str(project),
+                 "--project-conf", str(config), "--disable-auto-clean", "-e", ENVIRONMENT,
+                 "-j", str(jobs)], cwd=project)
+        except BaseException:
+            if managed:
+                trim_installer_downloads(core)
+            raise
+        if managed:
+            trim_installer_cache(core)
     artifacts = object_directory(project) / ENVIRONMENT
     if check_codecs:
         verify_linked_codecs(artifacts, core, identity["components"])
@@ -269,8 +317,7 @@ def build_locked(root, project, catalog, selected, destination, run, fetch, chec
         identity["release_source"] = release_source
     result = save_build(destination, files, identity, catalog, selected,
                         (help_root or root / "builder/help") if include_help else None)
-    if managed:
-        trim_installer_cache(core)
+    trim_compiler_objects(project)
     return result
 
 

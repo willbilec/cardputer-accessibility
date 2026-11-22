@@ -49,6 +49,8 @@ jobs:
         with:
           name: universal-firmware
           path: cardputer-adv-full-firmware.zip
+          retention-days: 1
+          if-no-files-found: error
 
   windows-package:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -66,6 +68,8 @@ jobs:
         with:
           name: windows-builder
           path: Cardputer-ADV-Builder-Windows-x64.zip
+          retention-days: 1
+          if-no-files-found: error
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

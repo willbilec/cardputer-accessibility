@@ -90,7 +90,11 @@ def trim_installer_cache(core):
             for name in ("esp32", "esp32c3", "esp32c5", "esp32c6", "esp32h2", "esp32p4",
                          "esp32p4_es", "esp32s2", "hosted"):
                 shutil.rmtree(sdk / name, ignore_errors=True)
-    for directory in ("dist", ".cache/uv", ".cache/downloads"):
+    trim_installer_downloads(core)
+
+
+def trim_installer_downloads(core):
+    for directory in ("dist", ".cache/uv", ".cache/downloads", ".cache/tmp"):
         shutil.rmtree(core / directory, ignore_errors=True)
 
 

@@ -245,7 +245,8 @@ def source_tree(catalog, cache=STATE):
         actual = [{key: item[key] for key in keys} for item in embedded["modules"]]
         declared = [{key: item[key] for key in keys} for item in catalog["modules"]]
         if (embedded["launcher"] != catalog["launcher"] or actual != declared
-                or embedded.get("supports_screen", False) != catalog.get("supports_screen", False)):
+                or any(embedded.get(key, False) != catalog.get(key, False)
+                       for key in ("supports_screen", "supports_usb_help"))):
             raise ValueError("Release source and catalog differ")
         (tree / ".source-sha256").write_text(checksum, encoding="ascii")
         tree.rename(root)
@@ -467,6 +468,8 @@ def prepare_release(tag, firmware, notes):
         catalog["help_assets"][filename] = source_asset(f"builder/help/{filename}")
     if manifest.get("supports_screen", False):
         catalog["supports_screen"] = True
+    if manifest.get("supports_usb_help", False):
+        catalog["supports_usb_help"] = True
     for module in manifest["modules"]:
         entry = {key: module[key] for key in ("id", "name", "version", "kind")}
         entry["description"] = module.get("description", "")

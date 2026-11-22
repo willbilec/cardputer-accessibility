@@ -8,6 +8,10 @@ The builder uses a 1200-baud USB touch to enter download mode from the running
 launcher. Press F5 to refresh USB ports after connecting the device. You can
 also use the manual procedure below.
 
+With help files included in a compatible build, leave the microSD card in
+the Cardputer for a routine application update. After the launcher restarts,
+the builder copies the text over USB and verifies it on the card.
+
 Use an **M5Stack Cardputer ADV with 8 MiB flash**, a data-capable USB cable, and Python. The universal firmware ZIP contains the bootloader, partition table, OTA initialization data, application, and their SHA-256 checksums. Extract it and run the commands from the extracted directory. Substitute your download port for `PORT` in each command.
 
 ```sh

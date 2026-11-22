@@ -15,6 +15,7 @@ To regenerate the Windows ZIP, run
 `python builder/package_windows.py release-files/Cardputer-ADV-Builder-Windows-x64`
 from a 64-bit Windows virtual environment with the builder requirements installed.
 Add `--with-source` to package production firmware sources with a local preview.
+The packaging command keeps the finished ZIP and removes its staging directory.
 
 Use Python 3.12 or later and install Git. Create a Python virtual environment and
 install the builder dependencies. On Linux, extract the source archive from
@@ -48,8 +49,11 @@ For custom builds with the Bluetooth/USB keyboard selected, its source downloads
 parallel with the audio sources. PlatformIO
 then installs its toolchain and any libraries for the selected apps. When help
 text is selected under **Help options**, the builder downloads the common help text and documentation
-for selected apps only, writes it to `sdcard/Help` in the output folder, and
-offers to copy it to a mounted microSD card. With this option on, Bible Reader
+for selected apps only and writes it to `sdcard/Help` in the output folder.
+After flashing and verifying a compatible launcher, the builder copies
+and verifies the text over USB with the microSD card still in the Cardputer.
+The text stays in the build folder if the card or transfer is unavailable.
+With this option on, Bible Reader
 also downloads its setup guide and Old Testament sorting scripts into
 `workspace/help/current`.
 The status bar shows the current download percentage. The activity log keeps
@@ -57,9 +61,17 @@ completed transfers and build phases. The builder
 chooses a job count from available logical CPUs and free RAM. The program's
 `workspace` folder holds downloaded sources, packages, the toolchain, and
 finished firmware builds. Repeating the same release selection reuses the
-verified saved image. Custom builds use incremental compiler objects. After
-successful updates the builder clears obsolete release caches and temporary
-toolchain downloads. Keep the workspace when updating the program.
+verified saved image. Custom builds keep the current compiler objects and
+a bounded cache. The desktop builder keeps the current and one previous
+automatic recovery bundle, and clears stale release caches and temporary
+toolchain downloads. Save any firmware you want to keep long-term to a
+separate folder. Keep the workspace when updating the program.
+
+On Windows, close the builder before running
+`powershell -File builder/clean_workspace.ps1` from the checkout to see
+which stale caches and generated bundles can be removed. Add `-Apply` to
+perform the cleanup. The script keeps the two newest workspace bundles and
+leaves device backups alone.
 
 The builder checks for program updates on GitHub. It verifies the SHA-256
 checksum of each updated Python file and loads the new program the next time
@@ -156,7 +168,7 @@ card. See the `controls-guide` entry for an example.
 - With the app and **Include help text and download setup files for selected
   apps** selected, the release builder downloads the checksummed files from
   the tagged source. It packages the on-device text into
-  `<build>/sdcard/Help/` and offers to copy it to `/Help/` on the card.
+  `<build>/sdcard/Help/` and copies it to `/Help/` after a verified flash.
   Setup guides and scripts are for the computer and stay in
   `workspace/help/current/`. Keep these files with the source outside the
   Windows runtime and program update file list.
