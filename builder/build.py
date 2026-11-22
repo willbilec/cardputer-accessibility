@@ -189,12 +189,12 @@ def resolve_components(components, modules):
 
 
 def selected_libraries(catalog, selected, screen=False):
-    modules = {module["id"]: module for module in catalog["modules"] if module["kind"] == "native"}
+    modules = {module["id"]: module for module in catalog.get("modules", []) if module["kind"] == "native"}
     unknown = set(selected) - modules.keys()
     if unknown:
         raise ValueError("Unknown native modules: " + ", ".join(sorted(unknown)))
     active = [modules[name] for name in modules if name in selected]
-    components = resolve_components(catalog["components"], active)
+    components = resolve_components(catalog.get("components", {}), active)
     libraries = ["symlink://generated/backgroundaudio-trial"]
     if screen:
         libraries.append("symlink://../M5GFX")
