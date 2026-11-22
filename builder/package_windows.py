@@ -63,7 +63,7 @@ def stage_package(output, base, compiler, with_source):
     files = {"LICENSE", "BUILDING.md", "FLASHING.md"}
     files.update("builder/" + name for name in (*PROGRAM_FILES, "bootstrap.py"))
     if with_source:
-        files.update(firmware_files(ROOT, load_modules(ROOT), sd_data=True))
+        files.update(firmware_files(ROOT, load_modules(ROOT, include_local=False), sd_data=True))
     for filename in sorted(files):
         source = ROOT / filename
         if source.is_file():

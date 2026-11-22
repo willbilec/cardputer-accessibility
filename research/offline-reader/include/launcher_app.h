@@ -8,6 +8,11 @@ namespace launcher {
 struct Services {
     void (*speak)(const String &message, bool sensitive, bool interrupt);
     void (*home)();
+    bool (*connectWifi)();
+    bool (*speechBusy)();
+    void (*setSpeechBoostEnabled)(bool);
+    void (*syncTime)();
+    int64_t (*savedEpoch)();
 };
 
 struct App {

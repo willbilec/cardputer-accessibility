@@ -240,7 +240,7 @@ def source_tree(catalog, cache=STATE):
             if len(members) != 1 or not members[0].is_dir():
                 raise ValueError("GitHub source archive has an unexpected layout")
             tree = members[0]
-        embedded = load_modules(tree)
+        embedded = load_modules(tree, include_local=False)
         keys = ("id", "name", "version", "kind")
         actual = [{key: item[key] for key in keys} for item in embedded["modules"]]
         declared = [{key: item[key] for key in keys} for item in catalog["modules"]]
@@ -250,7 +250,6 @@ def source_tree(catalog, cache=STATE):
             raise ValueError("Release source and catalog differ")
         (tree / ".source-sha256").write_text(checksum, encoding="ascii")
         tree.rename(root)
-    archive.unlink(missing_ok=True)
     return root
 
 
@@ -316,7 +315,6 @@ def build_release(catalog, selected, destination, *, screen, include_help, run,
             except (OSError, ValueError, KeyError, TypeError):
                 continue
             report(f"Reusing verified firmware from {path.name}.")
-            trim_release_cache(catalog, cache)
             return path
 
         bundled = next((item for item in catalog.get("precompiled", [])
@@ -338,7 +336,6 @@ def build_release(catalog, selected, destination, *, screen, include_help, run,
                 identity["release_source"] = checksum
                 files = {name: root / name for name in MIGRATION_FILES.values()}
                 save_build(destination, files, identity, catalog, selected)
-            archive.unlink(missing_ok=True)
         else:
             report("Preparing source for the selected firmware options.")
             root = source_tree(catalog, cache)
@@ -350,30 +347,9 @@ def build_release(catalog, selected, destination, *, screen, include_help, run,
                 report("Downloading the ESP32-S3 Arduino SDK.")
                 sdk_archive = fetch_asset(catalog, catalog["esp32s3_sdk"], cache)
             build(root, selected, destination, run=run, screen=screen, include_help=include_help,
-                  help_root=help_root, release_source=checksum, sdk_archive=sdk_archive)
-            if sdk_archive:
-                sdk_archive.unlink(missing_ok=True)
-        trim_release_cache(catalog, cache)
+                  help_root=help_root, release_source=checksum, sdk_archive=sdk_archive,
+                  include_local=False)
         return destination
-
-
-def trim_release_cache(catalog, cache=STATE):
-    checksum = catalog["source"]["sha256"]
-    for marker in (cache / "source").glob("*/.source-sha256"):
-        try:
-            old = marker.read_text(encoding="ascii")
-            if (old != checksum and re.fullmatch(r"[a-f0-9]{64}", old)
-                    and marker.parent.name == old[:16] and marker.parent.resolve() == marker.parent.absolute()):
-                shutil.rmtree(marker.parent)
-        except OSError:
-            pass
-    for directory in (cache / "help").glob("v*"):
-        if re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", directory.name):
-            shutil.rmtree(directory, ignore_errors=True)
-    downloads = cache / "downloads"
-    for directory in downloads.glob("*"):
-        if directory.is_dir() and re.fullmatch(r"[a-f0-9]{64}", directory.name):
-            shutil.rmtree(directory, ignore_errors=True)
 
 
 def package_folder(card, module):
@@ -441,7 +417,7 @@ def prepare_release(tag, firmware, notes):
     from program_update import update_manifest
 
     version(tag.removeprefix("v"))
-    manifest = load_modules(ROOT)
+    manifest = load_modules(ROOT, include_local=False)
     if tag != "v" + manifest["launcher"]:
         raise ValueError("Tag must match the launcher version")
     commit = subprocess.check_output(["git", "rev-parse", f"{tag}^{{commit}}"], cwd=ROOT, text=True).strip()

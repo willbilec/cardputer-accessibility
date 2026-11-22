@@ -389,7 +389,7 @@ enum class Page { Home
 #ifdef CARDPUTER_KEY_LEARNING
  ,Learn
 #endif
- ,Record, Files, FileActions, FileName, ConfirmDelete, Copying, Play, Settings, WifiScan, WifiList, Password, TimeZone, ManualTime, TimePicker, SpeechRate, SpeechVolume, MicGain, MediaVolume, Hid, UsbSDMode, UsbSD, PlayPalace, SettingsCategories, Synth, KeyMap, NvdaRemote, Text, VoiceChanger, Bible, RegisteredApp
+ ,Record, Files, FileActions, FileName, ConfirmDelete, Copying, Play, Settings, WifiScan, WifiList, Password, TimeZone, ManualTime, TimePicker, SpeechRate, SpeechVolume, MicGain, MediaVolume, Hid, UsbSDMode, UsbSD, PlayPalace, SettingsCategories, ShortcutPrograms, ShortcutKey, Synth, KeyMap, NvdaRemote, Text, VoiceChanger, Bible, RegisteredApp
 #ifdef CARDPUTER_HELP_MENU
  ,Help
 #endif
@@ -427,13 +427,13 @@ int rate=175,volume=65,mediaVolume=75,micGainDb=0,selection=0,timezoneIndex=0;
 void setSpeechBoostEnabled(bool enabled){
  SpeechLock lock;
  speechBoostEnabled=enabled;
- if(speechLoaded)configureSpeechRate(rate);
+ if(speechLoaded&&rate>espeakRATE_MAXIMUM)configureSpeechRate(rate);
 }
 #endif
 String speechRateLabel(){
 #ifdef UNIFIED_NVDA_REMOTE
  if(!speechBoostEnabled&&rate>espeakRATE_MAXIMUM)
-  return "Speech rate 450 during NVDA Remote. Saved rate "+String(rate)+".";
+  return "Speech rate 450 during the network session. Saved rate "+String(rate)+".";
 #endif
  return "Speech rate "+String(rate);
 }
@@ -546,6 +546,20 @@ constexpr int firstOnlineHomeIndex=sdSharingHomeIndex
 +1
 #endif
 ;
+constexpr int launchKeysSetting=13;
+String homeShortcutSettingKey(int homeIndex){
+ String identity=home[homeIndex];
+#ifdef CARDPUTER_SD_SHARING
+ if(homeIndex==sdSharingHomeIndex)identity="SD card sharing";
+#endif
+ uint32_t hash=2166136261u;
+ for(size_t i=0;i<identity.length();++i){hash^=uint8_t(identity[i]);hash*=16777619u;}
+ return String("lk")+String(hash,HEX);
+}
+int homeShortcut(int homeIndex){
+ String key=homeShortcutSettingKey(homeIndex);
+ return settings.getInt(key.c_str(),0);
+}
 #ifdef UNIFIED_CUSTOM_BUILD
 constexpr const launcher::App *registeredApps[]={nullptr
 #define UNIFIED_ADD_APP(entry, label) ,&entry
@@ -601,21 +615,21 @@ struct SpeechBench {
 } speechBench;
 #endif
 #endif
-const char *options[]={"Wi-Fi networks","Disconnect Wi-Fi","Set time from network","Time zone","Type date and time","Choose date and time","Speech rate","Speech volume","Media volume","Microphone gain","Internal flash space","SD card space","Key Map Manager"
+const char *options[]={"Wi-Fi networks","Disconnect Wi-Fi","Set time from network","Time zone","Type date and time","Choose date and time","Speech rate","Speech volume","Media volume","Microphone gain","Internal flash space","SD card space","Key Map Manager","Program launch keys"
 #ifdef UNIFIED_SCREEN
  ,"Backlight timeout"
 #endif
 };
 constexpr struct SettingsCategory { const char *name; int first, count; } categories[]={
- {"Network",0,2},{"Date and time",2,4},{"Audio",6,3},{"Recording",9,1},{"Storage",10,2},{"Keyboard",12,1}
+ {"Network",0,2},{"Date and time",2,4},{"Audio",6,3},{"Recording",9,1},{"Storage",10,2},{"Keyboard",12,2}
 #ifdef UNIFIED_SCREEN
- ,{"Display",13,1}
+ ,{"Display",14,1}
 #endif
 };
 constexpr int categoryCount=sizeof(categories)/sizeof(categories[0]);
 int category=0;
 #ifdef UNIFIED_SCREEN
-constexpr int backlightSetting=13;
+constexpr int backlightSetting=14;
 constexpr struct BacklightChoice { int seconds; const char *label; } backlightChoices[]={
  {0,"Always on"},{15,"15 seconds"},{30,"30 seconds"},{60,"1 minute"},{120,"2 minutes"},{300,"5 minutes"}
 };
@@ -632,6 +646,8 @@ const char *screenTitle(){
  case Page::Text:return "Text reader";
  case Page::SettingsCategories:return "Settings";
  case Page::Settings:return categories[category].name;
+ case Page::ShortcutPrograms:return "Program launch keys";
+ case Page::ShortcutKey:return "Assign launch key";
  case Page::WifiScan:case Page::WifiList:case Page::Password:return "Wi-Fi";
  case Page::TimeZone:return "Time zone";
  case Page::ManualTime:case Page::TimePicker:return "Set date and time";
@@ -1122,6 +1138,7 @@ int menuCount(){
  case Page::Home:return homeCount;
  case Page::SettingsCategories:return categoryCount;
  case Page::Settings:return categories[category].count;
+ case Page::ShortcutPrograms:return homeCount;
  case Page::TimeZone:return zoneCount;
  case Page::FileActions:return sizeof(fileActions)/sizeof(fileActions[0]);
   case Page::Files:return int(entries.size());
@@ -1158,6 +1175,10 @@ String menuLabel(int index){
  case Page::Home:return home[index];
  case Page::SettingsCategories:return categories[index].name;
  case Page::Settings:return options[categories[category].first+index];
+ case Page::ShortcutPrograms:{
+  const int assigned=homeShortcut(index);
+  return String(home[index])+(assigned?String(", key ")+String(char(assigned)):String(", no key assigned"));
+ }
  case Page::TimeZone:return zoneNames[index];
  case Page::FileActions:return fileActions[index];
   case Page::Files:
@@ -1180,7 +1201,7 @@ void drawMenu(const char *help=nullptr){
  using unifiedScreen::Icon;
  Icon icon=Icon::Menu;
  switch(page){
- case Page::SettingsCategories:case Page::Settings:case Page::BacklightTimeout:case Page::TimeZone:
+ case Page::SettingsCategories:case Page::Settings:case Page::ShortcutPrograms:case Page::BacklightTimeout:case Page::TimeZone:
   icon=Icon::Settings;break;
  case Page::Files:case Page::FileActions:icon=Icon::Folder;break;
  case Page::WifiList:icon=Icon::Radio;break;
@@ -1222,6 +1243,12 @@ void focus(const String &prefix) {
  case Page::Home:say(String(home[selection])+", "+String(selection+1)+" of "+String(homeCount));break;
  case Page::SettingsCategories:say(prefix+categories[selection].name+", "+String(selection+1)+" of "+String(categoryCount));break;
  case Page::Settings:say(String(options[selection])+", "+String(selection-categories[category].first+1)+" of "+String(categories[category].count));break;
+ case Page::ShortcutPrograms:{
+  const int assigned=homeShortcut(selection);
+  say(String(home[selection])+(assigned?String(", assigned to ")+String(keys::name(assigned).c_str()):String(", no launch key assigned"))+
+      ", "+String(selection+1)+" of "+String(homeCount));
+  break;
+ }
  case Page::TimeZone:say(String(zoneNames[selection])+", "+String(selection+1)+" of "+String(zoneCount));break;
  case Page::FileActions:say(String(fileActions[selection])+", "+String(selection+1)+" of 7");break;
   case Page::Files:
@@ -1252,7 +1279,9 @@ void focus(const String &prefix) {
  default:break;
  }
 #ifdef UNIFIED_SCREEN
- drawMenu(page==Page::BacklightTimeout?"; . Move  Enter Save  Backspace Back":nullptr);
+ drawMenu(page==Page::BacklightTimeout?"; . Move  Enter Save  Backspace Back":
+          page==Page::ShortcutPrograms?"; . Move  Enter Choose program  Backspace Back":
+          page==Page::ShortcutKey?"Press an unmodified key  Backspace Cancel":nullptr);
 #endif
 }
 #ifdef CARDPUTER_KEYBOARD_APP
@@ -1568,7 +1597,6 @@ void announceTime(){
 }
 void announceTimeField(){static const char *names[]={"Year","Month","Day","Hour, 24 hour clock","Minute"};say(String(names[timeField])+" "+String(timeFields[timeField])+". "+String(timeField+1)+" of 5");}
 void announceNetwork(){say(WiFi.status()==WL_CONNECTED?String("Wi-Fi connected to ")+WiFi.SSID():String("Wi-Fi not connected"));}
-#if defined(UNIFIED_PLAYPALACE) || defined(UNIFIED_NVDA_REMOTE)
 bool connectSavedWifi(){
  if(WiFi.status()==WL_CONNECTED)return true;
  const String ssid=settings.getString("wifiSsid");
@@ -1579,7 +1607,6 @@ bool connectSavedWifi(){
  WiFi.begin(ssid.c_str(),settings.getString("wifiPass").c_str());
  return true;
 }
-#endif
 void flushSpeech(){
  SpeechLock lock;
  if(speechLoaded&&speaking)reader.flush();
@@ -1625,6 +1652,8 @@ bool global(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State&s){
   else if(page==Page::VoiceChanger)say(voiceHelp);
 #endif
   else if(page==Page::KeyMap)say(keyMapHelp);
+  else if(page==Page::ShortcutPrograms)say("Program launch keys. Select any item on the launcher's home screen, including utilities, then press Enter and tap an unmodified printable key. A key can launch one item. Backspace returns");
+  else if(page==Page::ShortcutKey)say("Tap an unmodified printable key to assign it. The same key assignment moves from any previous item. Backspace cancels");
   else if(menuCount()||page==Page::WifiList)say("Semicolon moves up, period moves down. Hold to repeat. Comma first, slash last. Space reads the selection. Enter opens. Function backtick goes back. Control stops speech. Alt Q goes home");
   else say("Alt comma and slash change speech rate. Alt minus and equals change media volume. Alt left and right bracket change speech volume. Option space stops speech. Option R repeats. Alt Q goes home. Alt B battery. Alt T time. Alt N network");
   break;
@@ -1996,7 +2025,15 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
  }
  if(page==Page::Home&&selection>=firstRegisteredApp&&e.down&&
     e.row==2&&e.col==13&&!s.fn&&!s.opt&&!s.ctrl&&!s.alt){
-  static const launcher::Services services{say,homePage};
+  static const launcher::Services services{say,homePage,connectSavedWifi,[](){return speaking;},
+#ifdef UNIFIED_NVDA_REMOTE
+   setSpeechBoostEnabled,
+#else
+   nullptr,
+#endif
+   [](){if(!networkTimeStarted)startTimeSync(false);},
+   []()->int64_t{return validTime(lastKnownTime)?lastKnownTime:0;}
+  };
   activeRegisteredApp=registeredApps[selection-firstRegisteredApp+1];
   registeredSelection=selection;
   page=Page::RegisteredApp;
@@ -2131,6 +2168,41 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
  }
 #endif
  if(global(e,s))return;
+ if(page==Page::ShortcutKey){
+  if(!e.down)return;
+  if(s.fn&&e.row==0&&e.col==0){page=Page::ShortcutPrograms;focus();return;}
+  const int key=keys::plain[e.row][e.col];
+  if(!s.fn&&!s.opt&&!s.alt&&!s.ctrl&&!s.shift&&key==8){page=Page::ShortcutPrograms;focus();return;}
+  if(!s.fn&&!s.opt&&!s.alt&&!s.ctrl&&!s.shift&&key>=32){
+   bool replaced=false;
+   for(int i=0;i<homeCount;++i){
+    if(i==selection||homeShortcut(i)!=key)continue;
+    String oldSetting=homeShortcutSettingKey(i);
+    settings.putInt(oldSetting.c_str(),0);
+    replaced=true;
+   }
+   String settingKey=homeShortcutSettingKey(selection);
+   settings.putInt(settingKey.c_str(),key);
+   const String keyName=keys::name(key).c_str();
+   page=Page::ShortcutPrograms;
+   say(String("Launch key ")+keyName+" assigned to "+home[selection]+(replaced?". Any previous assignment for this key was replaced":""));
+   focus();
+  }
+  return;
+ }
+ if(page==Page::Home&&e.down&&!s.fn&&!s.opt&&!s.alt&&!s.ctrl&&!s.shift){
+  const int key=keys::plain[e.row][e.col];
+  if(key>=32){
+   for(int i=0;i<homeCount;++i){
+    if(homeShortcut(i)!=key)continue;
+    selection=i;
+    const HeadlessKeyboard::Event enter{2,13,true};
+    const HeadlessKeyboard::State plainState{};
+    handle(enter,plainState);
+    return;
+   }
+  }
+ }
 #ifdef CARDPUTER_BIBLE_APP
  if(page==Page::Bible){handleBible(e,s);return;}
  if(page==Page::Home&&selection==bibleHomeIndex&&e.row==2&&e.col==13&&!s.fn){
@@ -2247,6 +2319,8 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
   return;
  }
 #endif
+ if((escape||backspace)&&page==Page::ShortcutKey){page=Page::ShortcutPrograms;focus();return;}
+ if((escape||backspace)&&page==Page::ShortcutPrograms){page=Page::Settings;selection=launchKeysSetting;focus();return;}
  if((escape||backspace)&&page==Page::Settings){page=Page::SettingsCategories;selection=category;focus();return;}
  if((escape||backspace)&&page==Page::SettingsCategories){page=Page::Home;selection=settingsHomeIndex;focus();return;}
 #ifdef CARDPUTER_HELP_MENU
@@ -2550,6 +2624,17 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
  if(page==Page::Settings&&selection==12){
   keyMapManager.open(remoteKeyMap);altTapArmed=false;page=Page::KeyMap;
   say(String("Key Map Manager. Regular layer. ")+keyMapHelp);return;
+ }
+ if(page==Page::Settings&&selection==launchKeysSetting){
+  page=Page::ShortcutPrograms;selection=0;focus("Program launch keys. ");return;
+ }
+ if(page==Page::ShortcutPrograms){
+  page=Page::ShortcutKey;
+  say(String("Choose a key to launch ")+home[selection]+". Press any unmodified printable key. Backspace cancels");
+#ifdef UNIFIED_SCREEN
+  drawMenu("Press a key to assign  Backspace Cancel");
+#endif
+  return;
  }
  if(page==Page::Settings){switch(selection){case 0:scanWifi();break;case 1:settings.putBool("wifiOn",false);stopWifi();say("Wi-Fi disconnected");break;case 2:startTimeSync(true);break;case 3:page=Page::TimeZone;selection=timezoneIndex;focus();break;case 4:page=Page::ManualTime;timeInput="";say("Enter year, month, day, hour and minute as twelve digits, then Enter");break;case 5:{tm current{};time_t seed=time(nullptr);if(!validTime(seed))seed=lastKnownTime;if(validTime(seed)&&localtime_r(&seed,&current)){timeFields[0]=current.tm_year+1900;timeFields[1]=current.tm_mon+1;timeFields[2]=current.tm_mday;timeFields[3]=current.tm_hour;timeFields[4]=current.tm_min;}timeField=0;page=Page::TimePicker;say("Choose year, month, day, hour and minute. Semicolon increases, period decreases. Enter selects. "+String("Year ")+String(timeFields[0]));break;}case 6:page=Page::SpeechRate;say("Speech rate "+String(rate)+". Semicolon increases, period decreases. Enter returns");break;case 7:page=Page::SpeechVolume;say("Speech volume "+String(volume)+" percent. Semicolon increases, period decreases. Enter returns");break;case 9:page=Page::MicGain;say("Microphone gain "+String(micGainDb)+" decibels. Semicolon increases, period decreases. Enter returns");break;case 8:page=Page::MediaVolume;say("Media volume "+String(mediaVolume)+" percent. Semicolon increases, period decreases. Enter returns");break;case 10:announceFlashSpace();break;case 11:announceSDSpace();break;}return;}
 }

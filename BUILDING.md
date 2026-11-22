@@ -61,11 +61,15 @@ completed transfers and build phases. The builder
 chooses a job count from available logical CPUs and free RAM. The program's
 `workspace` folder holds downloaded sources, packages, the toolchain, and
 finished firmware builds. Repeating the same release selection reuses the
-verified saved image. Custom builds keep the current compiler objects and
-a bounded cache. The desktop builder keeps the current and one previous
-automatic recovery bundle, and clears stale release caches and temporary
-toolchain downloads. Save any firmware you want to keep long-term to a
-separate folder. Keep the workspace when updating the program.
+verified saved image. Custom builds keep PlatformIO libraries in persistent,
+dependency-set folders under the ignored `.pio/builder-libdeps/` directory.
+Each build reuses packages from earlier folders, while PlatformIO can still
+compile only the libraries selected by the current apps. Toolchain packages,
+release assets, source archives, and help downloads also stay in the workspace
+for reuse. The cache grows as you build more app combinations. The desktop
+builder keeps the current and one previous automatic recovery bundle. Save any
+firmware you want to keep long-term to a separate folder. Keep the workspace
+when updating the program.
 
 On Windows, close the builder and open **Clean Cardputer Workspace.cmd** in
 the checkout. It lists the stale caches and generated bundles it can remove.
@@ -109,6 +113,18 @@ upgrade, and USB recovery with the saved build. Use a device with an older
 layout to validate the one-time migration separately.
 
 ### Adding modules and releasing
+
+For checkout-specific apps, add a module record to the ignored
+`builder/local-modules.json` (`{"schema":1,"modules":[...]}`) and put its
+source under the ignored `research/offline-reader/src/local-modules/` folder.
+Use the same native module fields as the public manifest and set
+`"local_only": true`. The local builder can select these apps explicitly;
+the `all` preset includes them automatically when their manifest records and
+source files are present. The `standard` preset, release catalogs, and Windows
+packages omit them. The builder itself can be published on GitHub: the local
+manifest and source directory stay ignored and are not included in the public
+catalog or package. Keep each local source path relative to `src/`, for example
+`local-modules/my_app.cpp`.
 
 #### Register a native app
 

@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-import shutil
 import sys
 import tempfile
 from zipfile import ZipFile
@@ -11,7 +10,6 @@ UPSTREAM_VERSION = "55.03.39"
 PLATFORM_URL = ("https://github.com/pioarduino/platform-espressif32/releases/download/"
                 f"{UPSTREAM_VERSION}/platform-espressif32.zip")
 EXTRA_TOOLS = {"tool-xtensa-esp-elf-gdb", "contrib-piohome"}
-INSTALLER_TOOLS = {"toolchain-xtensa-esp-elf", "tool-esptoolpy"}
 SDK_PACKAGE = "framework-arduinoespressif32-libs"
 SDK_FULL = "https://github.com/espressif/arduino-esp32/releases/download/3.3.9/esp32-core-3.3.9-libs.tar.xz"
 SDK_ASSET = "cardputer-adv-esp32s3-sdk.zip"
@@ -71,31 +69,6 @@ def release_platform(name, path):
 
     module.Espressif32Platform = ReleasePlatform
     return module
-
-
-def trim_installer_cache(core):
-    """Discard staging copies only after a working toolchain has built firmware."""
-    packages = core / "packages"
-    for name in INSTALLER_TOOLS:
-        installed = packages / name
-        if (installed / ".piopm").is_file() and not (installed / "tools.json").exists():
-            shutil.rmtree(core / "tools" / name, ignore_errors=True)
-    platform = core / "platforms/espressif32/platform.json"
-    if platform.is_file() and json.loads(platform.read_text(encoding="utf-8")).get("version") == UPSTREAM_VERSION:
-        for name in EXTRA_TOOLS:
-            shutil.rmtree(packages / name, ignore_errors=True)
-            shutil.rmtree(core / "tools" / name, ignore_errors=True)
-        sdk = packages / SDK_PACKAGE
-        if (sdk / "esp32s3/qio_qspi").is_dir():
-            for name in ("esp32", "esp32c3", "esp32c5", "esp32c6", "esp32h2", "esp32p4",
-                         "esp32p4_es", "esp32s2", "hosted"):
-                shutil.rmtree(sdk / name, ignore_errors=True)
-    trim_installer_downloads(core)
-
-
-def trim_installer_downloads(core):
-    for directory in ("dist", ".cache/uv", ".cache/downloads", ".cache/tmp"):
-        shutil.rmtree(core / directory, ignore_errors=True)
 
 
 if __name__ == "__main__":

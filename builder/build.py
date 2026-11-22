@@ -15,8 +15,6 @@ import subprocess
 import sys
 import tempfile
 
-from compile_firmware import trim_installer_cache, trim_installer_downloads
-
 ROOT = Path(os.environ.get("CARDPUTER_BUILDER_ROOT", Path(__file__).resolve().parents[1]))
 STATE = ROOT / "workspace"
 PYTHON = Path(sys.executable)
@@ -121,7 +119,7 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def load_modules(root):
+def load_modules(root, *, include_local=True):
     catalog = json.loads((root / "builder/modules.json").read_text(encoding="utf-8"))
     if catalog["schema"] != 1:
         raise ValueError("Unsupported module catalog")
@@ -136,6 +134,28 @@ def load_modules(root):
     for record in catalog["modules"]:
         if record["kind"] not in {"native", "sd"}:
             raise ValueError(f"Unsupported package type for {record['id']}")
+    local_path = root / "builder/local-modules.json"
+    if include_local and local_path.is_file():
+        local = json.loads(local_path.read_text(encoding="utf-8"))
+        if local.get("schema") != 1 or not isinstance(local.get("modules"), list):
+            raise ValueError("Unsupported local module catalog")
+        local_ids = {record["id"] for record in catalog["modules"]}
+        for record in local["modules"]:
+            if record.get("kind") != "native" or not record.get("local_only", True):
+                raise ValueError("Local modules must be native and local_only")
+            name, version = record["id"], record["version"]
+            if (name in local_ids or name in ids
+                    or not re.fullmatch(r"[a-z][a-z0-9-]{0,39}", name)):
+                raise ValueError(f"Local module ID already exists: {record['id']}")
+            if not re.fullmatch(r"\d+\.\d+\.\d+", version, flags=re.ASCII):
+                raise ValueError(f"Invalid version for {name}")
+            local_ids.add(record["id"])
+            ids.add(name)
+            for source in record.get("sources", []):
+                if (not re.fullmatch(r"local-modules/[\w-]+\.cpp", source)
+                        or not (root / "research/offline-reader/src" / source).is_file()):
+                    raise ValueError(f"Invalid local module source: {source}")
+            catalog["modules"].append(record)
     components = catalog["components"]
     for name in components:
         if not re.fullmatch(r"[a-z][a-z0-9-]{0,39}", name) or name in ids:
@@ -168,6 +188,48 @@ def resolve_components(components, modules):
     return selected
 
 
+def selected_libraries(catalog, selected, screen=False):
+    modules = {module["id"]: module for module in catalog["modules"] if module["kind"] == "native"}
+    unknown = set(selected) - modules.keys()
+    if unknown:
+        raise ValueError("Unknown native modules: " + ", ".join(sorted(unknown)))
+    active = [modules[name] for name in modules if name in selected]
+    components = resolve_components(catalog["components"], active)
+    libraries = ["symlink://generated/backgroundaudio-trial"]
+    if screen:
+        libraries.append("symlink://../M5GFX")
+    for module in [*components.values(), *active]:
+        libraries.extend(module.get("libraries", []))
+    return list(dict.fromkeys(libraries))
+
+
+def dependency_cache_key(libraries):
+    canonical = "\n".join(sorted(dict.fromkeys(libraries)))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
+def prime_dependency_cache(project, key):
+    """Seed a new selection's env from prior installed libraries without moving them."""
+    root = project / ".pio/builder-libdeps"
+    target = root / key / ENVIRONMENT
+    if target.exists():
+        return target
+    target.mkdir(parents=True, exist_ok=True)
+    candidates = []
+    legacy = root / ENVIRONMENT
+    if legacy.is_dir():
+        candidates.append(legacy)
+    candidates.extend(path / ENVIRONMENT for path in root.iterdir()
+                      if path.is_dir() and path != root / key and (path / ENVIRONMENT).is_dir())
+    candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    for source in candidates:
+        for package in source.iterdir():
+            destination = target / package.name
+            if package.is_dir() and not destination.exists():
+                shutil.copytree(package, destination, symlinks=True)
+    return target
+
+
 def generate(project, catalog, selected, screen=False, include_help=False):
     modules = {module["id"]: module for module in catalog["modules"] if module["kind"] == "native"}
     unknown = set(selected) - modules.keys()
@@ -191,7 +253,8 @@ def generate(project, catalog, selected, screen=False, include_help=False):
     config.read(project / "platformio.ini", encoding="utf-8")
     config["platformio"]["core_dir"] = str(Path(os.environ.get(
         "PLATFORMIO_CORE_DIR", str(STATE / "toolchain"))).resolve())
-    config["platformio"]["libdeps_dir"] = str(project / ".pio/builder-libdeps")
+    cache_key = dependency_cache_key(selected_libraries(catalog, selected, screen))
+    config["platformio"]["libdeps_dir"] = str(project / ".pio/builder-libdeps" / cache_key)
     config["platformio"]["build_dir"] = str(object_directory(project))
     sources = ["+<unified.cpp>", "+<headless_board.cpp>", "+<unified_hid.cpp>"]
     if "-DUNIFIED_BUILDER_HELP_UPLOAD=1" in flags:
@@ -212,7 +275,8 @@ def generate(project, catalog, selected, screen=False, include_help=False):
     registrations = []
     for module in [*components.values(), *active]:
         for source in module.get("sources", []):
-            if not re.fullmatch(r"[\w-]+\.cpp", source) or not (project / "src" / source).is_file():
+            if (not re.fullmatch(r"(?:[\w-]+|local-modules/[\w-]+)\.cpp", source)
+                    or not (project / "src" / source).is_file()):
                 raise ValueError(f"Invalid module source: {source}")
             sources.append(f"+<{source}>")
         for flag in module.get("flags", []):
@@ -267,10 +331,11 @@ def verify_linked_codecs(artifacts, core, components):
 
 
 def build(root, selected, destination, run=subprocess.check_call, fetch=True, check_codecs=False,
-          screen=False, include_help=False, help_root=None, release_source=None, sdk_archive=None):
+          screen=False, include_help=False, help_root=None, release_source=None, sdk_archive=None,
+          include_local=True):
     root = root.resolve()
     destination = destination.resolve()
-    catalog = load_modules(root)
+    catalog = load_modules(root, include_local=include_local)
     project = root / "research/offline-reader"
     with project_lock(project):
         return build_locked(root, project, catalog, selected, destination, run, fetch, check_codecs,
@@ -279,7 +344,9 @@ def build(root, selected, destination, run=subprocess.check_call, fetch=True, ch
 
 def build_locked(root, project, catalog, selected, destination, run, fetch, check_codecs, screen=False,
                  include_help=False, help_root=None, release_source=None, sdk_archive=None):
+    dependencies = selected_libraries(catalog, selected, screen)
     config, identity, core = generate(project, catalog, selected, screen, include_help)
+    prime_dependency_cache(project, dependency_cache_key(dependencies))
     if fetch:
         dependencies = [str(PYTHON), "-u", str(root / "fetch_dependencies.py"), "--firmware"]
         if "bluetooth-usb-keyboard" in selected:
@@ -298,16 +365,9 @@ def build_locked(root, project, catalog, selected, destination, run, fetch, chec
     if managed and sdk_archive:
         launcher.extend(["--sdk-archive", str(sdk_archive.resolve())])
     with project_lock(core) if managed else nullcontext():
-        try:
-            run([str(PYTHON), "-u", *launcher, "run", "--project-dir", str(project),
-                 "--project-conf", str(config), "--disable-auto-clean", "-e", ENVIRONMENT,
-                 "-j", str(jobs)], cwd=project)
-        except BaseException:
-            if managed:
-                trim_installer_downloads(core)
-            raise
-        if managed:
-            trim_installer_cache(core)
+        run([str(PYTHON), "-u", *launcher, "run", "--project-dir", str(project),
+             "--project-conf", str(config), "--disable-auto-clean", "-e", ENVIRONMENT,
+             "-j", str(jobs)], cwd=project)
     artifacts = object_directory(project) / ENVIRONMENT
     if check_codecs:
         verify_linked_codecs(artifacts, core, identity["components"])
@@ -365,7 +425,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
     parser.add_argument("modules", nargs="*")
-    parser.add_argument("--preset", help="core, standard, all, or a single module ID")
+    parser.add_argument("--preset", help="core, standard, all (including checkout-local apps), or one module ID")
     parser.add_argument("--skip-fetch", action="store_true")
     parser.add_argument("--check-codecs", action="store_true", help="Check codec presence in linked firmware")
     parser.add_argument("--screen", action="store_true", help="Keep the LCD on and show spoken text")
@@ -379,6 +439,7 @@ if __name__ == "__main__":
         parser.error("Choose a preset or list explicit modules")
     if args.preset in {"all", "standard"}:
         selected = [item["id"] for item in load_modules(ROOT)["modules"] if item["kind"] == "native"
+                    and (args.preset == "all" or not item.get("local_only"))
                     and (args.preset == "all" or item["id"] != "key-learning")]
     elif args.preset and args.preset != "core":
         selected = [args.preset]

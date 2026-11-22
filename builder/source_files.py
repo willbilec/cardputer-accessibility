@@ -17,7 +17,8 @@ def firmware_files(root, manifest, *, sd_data=False):
     sources = {firmware / "src" / name for name in (
         "unified.cpp", "headless_board.cpp", "unified_hid.cpp",
     )}
-    for record in [*manifest["components"].values(), *manifest["modules"]]:
+    for record in [*manifest["components"].values(),
+                   *(module for module in manifest["modules"] if not module.get("local_only"))]:
         sources.update(firmware / "src" / name for name in record.get("sources", []))
         files.update(firmware / script.split(":", 1)[-1] for script in record.get("scripts", []))
         if sd_data and record.get("kind") == "sd":
