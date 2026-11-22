@@ -135,12 +135,12 @@ void openBible(){
  if(std::find(bibleApp.versions.begin(),bibleApp.versions.end(),saved.version)!=bibleApp.versions.end()){
   bibleApp.position.version=saved.version;
   if(saved.chapter && playBible(saved,false)){
-   say("Bible. "+saved.version+". Resuming "+bibleReference(saved.book,saved.chapter)+". Option H for help.");
+   say("Bible. "+saved.version+". Resuming "+bibleReference(saved.book,saved.chapter)+". Alt H for help.");
    return;
   }
   bibleApp.position.book=saved.book;
  }
- say("Bible. "+bibleApp.position.version+". B chooses a book. Space starts playing. Option H for help.");
+ say("Bible. "+bibleApp.position.version+". B chooses a book. Space starts playing. Alt H for help.");
 }
 
 bool stepBible(bool forward,bool announce=true){

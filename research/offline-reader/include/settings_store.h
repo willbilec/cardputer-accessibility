@@ -68,8 +68,11 @@ private:
  const char *backupPath="/cardputer-access/settings.bak";
  const char *tempPath="/cardputer-access/settings.tmp";
  bool read(const char *path,settingsCodec::Values &out){
-  File file=SD.open(path,FILE_READ);if(!file||file.size()>32768)return false;
-  std::string data;data.reserve(file.size());while(file.available()){int c=file.read();if(c<0)return false;data+=char(c);}file.close();return settingsCodec::decode(data,out);
+  File file=SD.open(path,FILE_READ);if(!file)return false;
+  const size_t size=file.size();if(size>32768)return false;
+  std::string data(size,'\0');
+  if(size&&file.read(reinterpret_cast<uint8_t *>(data.data()),size)!=size)return false;
+  file.close();return settingsCodec::decode(data,out);
  }
  bool save(){
   if(!sdWritable)return false;

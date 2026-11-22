@@ -31,8 +31,12 @@ public:
   i2s_chan_info_t info{};failureStage=4;failureCode=i2s_channel_get_info(_tx_handle,&info);if(failureCode!=ESP_OK)return false;
   if(info.total_dma_buf_size!=_buffers*_bufferWords*4){failureCode=ESP_ERR_INVALID_SIZE;return false;}
   _totalAvailable=info.total_dma_buf_size;
-  int16_t zero[2]={};size_t written=0;
-  do {i2s_channel_preload_data(_tx_handle,zero,sizeof(zero),&written);} while(written);
+  static constexpr int16_t silence[128]{};
+  size_t written=0;
+  do {
+   failureCode=i2s_channel_preload_data(_tx_handle,silence,sizeof(silence),&written);
+   if(failureCode!=ESP_OK)return false;
+  } while(written);
   i2s_event_callbacks_t callbacks{};callbacks.on_sent=_onSent;
   failureStage=5;failureCode=i2s_channel_register_event_callback(_tx_handle,&callbacks,this);if(failureCode!=ESP_OK)return false;
   failureStage=6;

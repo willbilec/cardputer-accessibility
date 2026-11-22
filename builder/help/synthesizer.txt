@@ -2,4 +2,4 @@ Synthesizer
 
 Open Synthesizer from Home and play notes with the keyboard. Option+1 through
 Option+0 select instruments. Hold Control to sustain, Shift for flanger, Fn for
-tremolo, or Option for arpeggio. Option+H reads controls. Alt+Q returns Home.
+tremolo, or Option for arpeggio. Alt+H reads controls. Alt+Q returns Home.

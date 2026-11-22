@@ -913,7 +913,7 @@ void bindKey(const String& name, const Key& key) {
     packet["key"] = name;
     packet["shift"] = key.shift;
     packet["control"] = key.ctrl;
-    packet["alt"] = key.alt;
+    packet["alt"] = key.option;
     if (menuId.length()) packet["menu_id"] = menuId;
     if (!items.empty()) {
         packet["menu_index"] = selected + 1;
@@ -923,7 +923,7 @@ void bindKey(const String& name, const Key& key) {
 }
 
 void typeCharacter(const Key& key, String& target, size_t limit, bool echo = true) {
-    if (key.fn || key.ctrl || key.alt) return;
+    if (key.fn || key.ctrl || key.option) return;
     if (key.base == 8) {
         if (target.length()) {
             unsigned pos = target.length() - 1;
@@ -1148,7 +1148,7 @@ void key(const Key& key, bool repeated) {
     const bool escape = key.base == '`' && (key.fn || (screen == Screen::Game &&
         pane == Pane::Game && inputId.isEmpty() && documentId.isEmpty()));
     const bool enter = !key.fn && key.base == 13;
-    if (key.alt && key.base == 'k') {
+    if (key.option && key.base == 'k') {
         say("Tab cycles Game, Chat, and History. Semicolon up, period down, comma left, slash right. "
             "Hold an arrow to repeat. Control stops speech. "
             "Function and digits for F keys. Backtick is Escape in Game. Option M returns to Game. "
@@ -1213,7 +1213,7 @@ void key(const Key& key, bool repeated) {
         return;
     }
     if (screen == Screen::Home || screen == Screen::Saved) {
-        if (key.base == 8 && !key.fn && !key.ctrl && !key.alt) {
+        if (key.base == 8 && !key.fn && !key.ctrl && !key.option) {
             if (screen == Screen::Home) exitRequested = true;
             else home();
             return;
@@ -1259,7 +1259,7 @@ void key(const Key& key, bool repeated) {
         }
         return;
     }
-    if (key.alt && key.base == 's') {
+    if (key.option && key.base == 's') {
         record(SignedOut);
         exitRequested = true;
         return;
@@ -1282,11 +1282,11 @@ void key(const Key& key, bool repeated) {
             packet["prompt_id"] = tutorialId;
             packet["action"] = tutorialActions[tutorialSelected].id;
             send(packet);
-        } else if (key.alt && key.base == 'e') say(tutorialText);
+        } else if (key.option && key.base == 'e') say(tutorialText);
         return;
     }
     if (documentId.length()) {
-        if (key.alt && key.base == 'e') { readText(entry.isEmpty() ? String("Empty document") : entry); return; }
+        if (key.option && key.base == 'e') { readText(entry.isEmpty() ? String("Empty document") : entry); return; }
         if (enter && key.shift && entry.length() < 8192) { entry += '\n'; return; }
         if (escape || enter) {
             JsonDocument packet;
@@ -1299,14 +1299,14 @@ void key(const Key& key, bool repeated) {
         } else typeCharacter(key, entry, 8192);
         return;
     }
-    if (key.alt && key.base == 'u' && inputId.isEmpty()) {
+    if (key.option && key.base == 'u' && inputId.isEmpty()) {
         entry = active.soundBase;
         screen = Screen::SoundAddress;
         say("Sound asset base address. Empty uses the PlayPalace default");
         return;
     }
     if (inputId.length()) {
-        if (key.alt && key.base == 'e' && inputReadOnly) { readText(entry); return; }
+        if (key.option && key.base == 'e' && inputReadOnly) { readText(entry); return; }
         if (escape && !inputCancelable) { say("This input cannot be cancelled"); return; }
         if (enter && key.shift && inputMultiline && !inputReadOnly && entry.length() < 1024) {
             entry += '\n';
@@ -1323,14 +1323,14 @@ void key(const Key& key, bool repeated) {
         } else if (!inputReadOnly) typeCharacter(key, entry, 1024, false);
         return;
     }
-    if ((key.base == 9 && !key.ctrl && !key.alt) || (key.alt && key.base == 'm')) {
-        pane = key.alt ? Pane::Game : Pane((int(pane) + (key.shift ? 2 : 1)) % 3);
+    if ((key.base == 9 && !key.ctrl && !key.option) || (key.option && key.base == 'm')) {
+        pane = key.option ? Pane::Game : Pane((int(pane) + (key.shift ? 2 : 1)) % 3);
         if (pane == Pane::Game) say(items.empty() ? String("Game") : "Game. " + items[selected].text);
         else if (pane == Pane::Chat) say("Chat");
         else { historyIndex = int(history.size()); say("History"); }
         return;
     }
-    if (key.alt && key.base == 'p') { simple("ping"); return; }
+    if (key.option && key.base == 'p') { simple("ping"); return; }
     if (key.function == 2) { simple(key.shift ? "list_online_with_games" : "list_online"); return; }
     if (key.function == 6) {
         bool& mutedChat = key.shift ? globalChatMuted : tableChatMuted;
@@ -1344,7 +1344,7 @@ void key(const Key& key, bool repeated) {
         say("Sound effects volume " + String(effectVolume) + " percent");
         return;
     }
-    if (pane == Pane::Chat && !key.fn && !key.ctrl && !key.alt) {
+    if (pane == Pane::Chat && !key.fn && !key.ctrl && !key.option) {
         if (enter) {
             chat.trim();
             if (!chat.length()) return;
@@ -1395,17 +1395,17 @@ void key(const Key& key, bool repeated) {
         else if (!items.empty()) {
             const int previous = selected;
             if (grid) selected = navigate(selected, int(items.size()), gridStart, gridWidth,
-                                          rows, direction, key.alt);
+                                          rows, direction, key.option);
             else if (direction == Direction::Up || direction == Direction::Down) {
                 const int delta = direction == Direction::Up ? -1 : 1;
                 selected = std::clamp(selected + delta, 0, int(items.size()) - 1);
             }
             if (!repeated || previous != selected) focusMenu(true);
         }
-    } else if (enter && !key.shift && !key.ctrl && !key.alt) selectMenu();
+    } else if (enter && !key.shift && !key.ctrl && !key.option) selectMenu();
     else if (key.base == ' ') bindKey("space", key);
     else if (enter) bindKey("enter", key);
-    else if (key.base >= 32 && (!multiletter || key.ctrl || key.alt || key.shift ||
+    else if (key.base >= 32 && (!multiletter || key.ctrl || key.option || key.shift ||
              (menuId == "status_box" && isalnum(uint8_t(key.base)))))
         bindKey(String(key.base), key);
     else if (multiletter && !items.empty() && key.base >= 'a' && key.base <= 'z') {

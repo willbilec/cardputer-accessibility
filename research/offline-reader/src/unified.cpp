@@ -345,7 +345,7 @@ struct SynthSession {
 std::unique_ptr<SynthSession> synth;
 Synth::Preset synthPreset=Synth::Preset::Piano;
 constexpr const char *synthPresets[]={"Piano","Chiptune","Drums","Bass","Glass bells","Grand piano","NES chip","Analog brass","Electric piano","Drawbar organ"};
-constexpr const char *synthHelp="Option 1 piano, 2 chiptune, 3 drums, 4 bass, 5 glass bells, 6 grand piano, 7 NES chip, 8 analog brass, 9 electric piano, 0 drawbar organ. Option Z, X, C, V, or M starts a backing loop for the preset. Option Backspace or Tilde stops it. Play any notes over the loop. Option Function R reads the preset. Hold Control for sustain, Shift flanger, Function tremolo, or Option arpeggio. Option brackets adjust quiet sound boost. Option Space stops speech. Alt minus and equals adjust synth volume. Alt brackets adjust speech volume. Alt Q goes home.";
+constexpr const char *synthHelp="Option 1 piano, 2 chiptune, 3 drums, 4 bass, 5 glass bells, 6 grand piano, 7 NES chip, 8 analog brass, 9 electric piano, 0 drawbar organ. Option Z, X, C, V, or M starts a backing loop for the preset. Option Backspace or Tilde stops it. Play any notes over the loop. Option Function R reads the preset. Hold Control for sustain, Shift flanger, Function tremolo, or Option arpeggio. Option brackets adjust quiet sound boost. Alt Space stops speech. Alt minus and equals adjust synth volume. Alt brackets adjust speech volume. Alt Q goes home.";
 int synthBoost=2;
 bool synthSustain=false,synthFlange=false,synthTremolo=false,synthArpeggio=false;
 float synthGain=0;
@@ -547,6 +547,8 @@ constexpr int firstOnlineHomeIndex=sdSharingHomeIndex
 #endif
 ;
 constexpr int launchKeysSetting=13;
+int homeShortcuts[homeCount]{};
+bool homeShortcutsLoaded=false;
 String homeShortcutSettingKey(int homeIndex){
  String identity=home[homeIndex];
 #ifdef CARDPUTER_SD_SHARING
@@ -556,9 +558,17 @@ String homeShortcutSettingKey(int homeIndex){
  for(size_t i=0;i<identity.length();++i){hash^=uint8_t(identity[i]);hash*=16777619u;}
  return String("lk")+String(hash,HEX);
 }
+void loadHomeShortcuts(){
+ if(homeShortcutsLoaded)return;
+ for(int i=0;i<homeCount;++i){
+  const String key=homeShortcutSettingKey(i);
+  homeShortcuts[i]=settings.getInt(key.c_str(),0);
+ }
+ homeShortcutsLoaded=true;
+}
 int homeShortcut(int homeIndex){
- String key=homeShortcutSettingKey(homeIndex);
- return settings.getInt(key.c_str(),0);
+ loadHomeShortcuts();
+ return homeShortcuts[homeIndex];
 }
 #ifdef UNIFIED_CUSTOM_BUILD
 constexpr const launcher::App *registeredApps[]={nullptr
@@ -1013,6 +1023,7 @@ bool recorderCardReady(){
  card.end();
  sdReady=card.begin(12,SPI,25000000);
  settings.attachSD(sdReady);
+ homeShortcutsLoaded=false;
  return sdReady;
 }
 
@@ -1219,11 +1230,11 @@ const char *appOpeningHelp(Page opened){
  case Page::Record:return "Enter Record   Space Pause   Ctrl Preview";
  case Page::Hid:return "Alt Layer   Opt+1-4 Slot   Opt+M Mouse";
  case Page::Play:return "Space Pause   ; . Volume   Backspace Files";
- case Page::Text:return "Enter Next   Space Reread   Opt+H Help";
+ case Page::Text:return "Enter Next   Space Reread   Alt+H Help";
  case Page::KeyMap:return "Tap a key   Fn+Space Assign   Alt Layer";
- case Page::Synth:return "Play keys   Opt+0-9 Preset   Opt+H Help";
+ case Page::Synth:return "Play keys   Opt+0-9 Preset   Alt+H Help";
  case Page::VoiceChanger:return "1-0 Voice   Enter Record   Space Replay";
- case Page::Bible:return "B Books   C Chapters   Space Play   Opt+H";
+ case Page::Bible:return "B Books   C Chapters   Space Play   Alt+H";
  case Page::PlayPalace:return "; . Move   Enter Select   Alt+Q Home";
  case Page::RegisteredApp:return "Alt+Q Home";
  default:return nullptr;
@@ -1628,7 +1639,11 @@ bool global(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State&s){
  if(page==Page::Hid&&c!=Command::Home)suppressHid();
 #endif
  switch(c){
- case Command::Home:homePage();break;
+ case Command::Home:
+#ifdef CARDPUTER_SD_SHARING
+  if(page==Page::UsbSD){leaveUsbSD();break;}
+#endif
+  homePage();break;
  case Command::Battery:announceBattery();break;
  case Command::Time:announceTime();break;
  case Command::Network:announceNetwork();break;
@@ -1654,11 +1669,11 @@ bool global(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State&s){
   else if(page==Page::KeyMap)say(keyMapHelp);
   else if(page==Page::ShortcutPrograms)say("Program launch keys. Select any item on the launcher's home screen, including utilities, then press Enter and tap an unmodified printable key. A key can launch one item. Backspace returns");
   else if(page==Page::ShortcutKey)say("Tap an unmodified printable key to assign it. The same key assignment moves from any previous item. Backspace cancels");
-  else if(menuCount()||page==Page::WifiList)say("Semicolon moves up, period moves down. Hold to repeat. Comma first, slash last. Space reads the selection. Enter opens. Function backtick goes back. Control stops speech. Alt Q goes home");
-  else say("Alt comma and slash change speech rate. Alt minus and equals change media volume. Alt left and right bracket change speech volume. Option space stops speech. Option R repeats. Alt Q goes home. Alt B battery. Alt T time. Alt N network");
+  else if(menuCount()||page==Page::WifiList)say("Semicolon moves up, period moves down. Hold to repeat. Comma first, slash last. Space reads the selection. Enter opens. Function backtick goes back. Alt Space stops speech. Alt R repeats. Alt T reads time. Alt Q goes home");
+  else say("Alt comma and slash change speech rate. Alt minus and equals change media volume. Alt left and right bracket change speech volume. Alt Space stops speech. Alt R repeats. Alt Q goes home. Alt B battery. Alt T time. Alt N network");
   break;
  case Command::RateDown:case Command::RateUp:
-  rate=constrain(rate+(c==Command::RateUp?10:-10),100,maxSpeechRate);{SpeechLock lock;if(speechLoaded)rate=configureSpeechRate(rate);}settings.putInt("rate",rate,page==Page::PlayPalace);say(speechRateLabel());break;
+  rate=constrain(rate+(c==Command::RateUp?10:-10),100,maxSpeechRate);{SpeechLock lock;if(speechLoaded)rate=configureSpeechRate(rate);}settings.putInt("rate",rate,page==Page::PlayPalace||page==Page::UsbSD);say(speechRateLabel());break;
  case Command::VolumeUp:case Command::VolumeDown:
   volume=constrain(volume+(c==Command::VolumeUp?5:-5),5,100);{SpeechLock lock;if(speechLoaded)reader.setGain(volume*speechGainPerPercent);}settings.putInt("volume",volume,page==Page::PlayPalace||page==Page::UsbSD);say("Speech volume "+String(volume)+" percent");break;
  case Command::MediaUp:case Command::MediaDown:
@@ -1669,7 +1684,7 @@ bool global(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State&s){
   mediaVolume=constrain(mediaVolume+delta,0,100);
   {SpeechLock lock;if(speechLoaded)reader.setGain(volume*speechGainPerPercent);}
   setMediaGain();
-  settings.putVolumes(volume,mediaVolume,page==Page::PlayPalace);
+  settings.putVolumes(volume,mediaVolume,page==Page::PlayPalace||page==Page::UsbSD);
   say("Speech "+String(volume)+" percent. Media "+String(mediaVolume)+" percent");
   break;
  }
@@ -2020,7 +2035,7 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
 #endif
 #ifdef UNIFIED_CUSTOM_BUILD
  if(page==Page::RegisteredApp){
-  if(!e.down||!global(e,s))activeRegisteredApp->key(e,s);
+  if(!global(e,s)&&!s.alt)activeRegisteredApp->key(e,s);
   return;
  }
  if(page==Page::Home&&selection>=firstRegisteredApp&&e.down&&
@@ -2145,15 +2160,21 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
  }
 #endif
  if(!e.down)return;
+ if(global(e,s))return;
+ if(s.alt){
+#ifdef CARDPUTER_KEYBOARD_APP
+  if(page==Page::Hid)suppressHid();
+#endif
+  return;
+ }
 #ifdef CARDPUTER_SD_SHARING
  if(page==Page::UsbSD){
-  if((s.alt&&e.row==1&&e.col==1)||(s.fn&&e.row==0&&e.col==0)||(!s.alt&&!s.fn&&e.row==0&&e.col==13)){
+  if((s.fn&&e.row==0&&e.col==0)||(!s.fn&&e.row==0&&e.col==13)){
    leaveUsbSD();
-  }else if(e.row==3&&e.col==13){
+  }else if(!s.opt&&e.row==3&&e.col==13){
    if(wifiSDEnabled&&wifiSD)announceWifiSD();
    else say(!unifiedUSBConnected()?"Connect a USB data cable":usbWritable?"SD card shared with write access":"SD card shared read only");
   }else if(e.row==3&&e.col==0)stopSpeech();
-  else if(s.alt&&e.row<=1&&(e.col==11||e.col==12))global(e,s);
   return;
  }
 #endif
@@ -2162,12 +2183,10 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
 #endif
 #ifdef CARDPUTER_VOICE_CHANGER
  if(page==Page::VoiceChanger&&(voiceMode==VoiceMode::Recording||voiceMode==VoiceMode::RecordStarting)){
-  if(s.alt&&e.row<=1&&(e.col==11||e.col==12))global(e,s);
-  else playVoice();
+  playVoice();
   return;
  }
 #endif
- if(global(e,s))return;
  if(page==Page::ShortcutKey){
   if(!e.down)return;
   if(s.fn&&e.row==0&&e.col==0){page=Page::ShortcutPrograms;focus();return;}
@@ -2179,10 +2198,12 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
     if(i==selection||homeShortcut(i)!=key)continue;
     String oldSetting=homeShortcutSettingKey(i);
     settings.putInt(oldSetting.c_str(),0);
+    homeShortcuts[i]=0;
     replaced=true;
    }
    String settingKey=homeShortcutSettingKey(selection);
    settings.putInt(settingKey.c_str(),key);
+   homeShortcuts[selection]=key;
    const String keyName=keys::name(key).c_str();
    page=Page::ShortcutPrograms;
    say(String("Launch key ")+keyName+" assigned to "+home[selection]+(replaced?". Any previous assignment for this key was replaced":""));
@@ -2193,8 +2214,9 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
  if(page==Page::Home&&e.down&&!s.fn&&!s.opt&&!s.alt&&!s.ctrl&&!s.shift){
   const int key=keys::plain[e.row][e.col];
   if(key>=32){
+   loadHomeShortcuts();
    for(int i=0;i<homeCount;++i){
-    if(homeShortcut(i)!=key)continue;
+    if(homeShortcuts[i]!=key)continue;
     selection=i;
     const HeadlessKeyboard::Event enter{2,13,true};
     const HeadlessKeyboard::State plainState{};
@@ -2251,7 +2273,6 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
 #endif
 #ifdef UNIFIED_PLAYPALACE
  if(page==Page::PlayPalace){
-  if(s.alt)return;
   const char base=keys::plain[e.row][e.col];
   const char character=s.shift?keys::shifted[e.row][e.col]:base;
   const int function=s.fn&&e.row==0&&e.col>=1&&e.col<=12?e.col:0;
@@ -2298,7 +2319,7 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
   }
   if(!synth){say("Not enough memory for the synthesizer.");return;}
   page=Page::Synth;
-  say(String("Synthesizer. ")+synthPresets[int(synthPreset)]+". Play the keys. Option with a digit selects a preset. Option Z starts its first backing loop. Option H reads controls.");
+  say(String("Synthesizer. ")+synthPresets[int(synthPreset)]+". Play the keys. Option with a digit selects a preset. Option Z starts its first backing loop. Alt H reads controls.");
   return;
  }
 #endif
@@ -2560,7 +2581,12 @@ void handle(const HeadlessKeyboard::Event &e,const HeadlessKeyboard::State &s){
  if(page==Page::FileActions){
   int action=selection;
   if(action==6){page=Page::Files;loadDirectory();return;}
-  if(action==5){card.end();sdReady=card.begin(12,SPI,25000000);settings.attachSD(sdReady);directory="/";page=Page::Files;if(sdReady){loadDirectory();say("SD card ready. Restart to apply settings from the card");}else say("SD card unavailable");return;}
+  if(action==5){
+   card.end();sdReady=card.begin(12,SPI,25000000);settings.attachSD(sdReady);
+   homeShortcutsLoaded=false;directory="/";page=Page::Files;
+   if(sdReady){loadDirectory();say("SD card ready. Restart to apply settings from the card");}else say("SD card unavailable");
+   return;
+  }
   if(action==4){renaming=false;fileInput="";page=Page::FileName;say("New folder name. Type name, Enter creates, Function backtick cancels");return;}
   if(action==3){
    if(copySource.isEmpty()){say("No file copied");return;}
@@ -2666,7 +2692,6 @@ void setup(){
 #else
  M5Cardputer.Keyboard.begin();
 #endif
- SPI.begin(40,39,14,12);sdReady=card.begin(12,SPI,25000000);
 #ifdef UNIFIED_DIAGNOSTICS
  startupStage=3;
 #endif
@@ -2708,6 +2733,9 @@ void setup(){
 #ifdef UNIFIED_DIAGNOSTICS
  startupStage=4;
 #endif
+ // The ES8311 takes its clock from I2S BCLK. Let the audio path settle
+ // while the launcher mounts the card and loads the saved speech settings.
+ SPI.begin(40,39,14,12);sdReady=card.begin(12,SPI,25000000);
  settings.begin(sdReady);rate=constrain(settings.getInt("rate",175),100,maxSpeechRate);volume=constrain(settings.getInt("volume",65),5,100);mediaVolume=constrain(settings.getInt("mediaVol",75),0,100);micGainDb=constrain(settings.getInt("micGain",0),-24,24);timezoneIndex=constrain(settings.getInt("timezone",0),0,zoneCount-1);applyTimezone();lastKnownTime=strtoll(settings.getString("lastEpoch").c_str(),nullptr,10);
 #ifdef UNIFIED_SCREEN
  const int savedTimeout=settings.getInt("backlightSec",0);
@@ -2758,7 +2786,14 @@ void loop(){
 #ifdef UNIFIED_SCREEN
   const Page previous=page;
 #endif
-  handle(e,s);
+  if(e.heldModifiers==s)handle(e,s);
+  else{
+   // The keyboard controller can deliver both presses and releases at once.
+   auto eventState=s;
+   static_cast<HeadlessKeyboard::Modifiers &>(eventState)=e.heldModifiers;
+   eventState.modifiers=(eventState.ctrl?1:0)|(eventState.shift?2:0)|(eventState.alt?4:0);
+   handle(e,eventState);
+  }
 #ifdef UNIFIED_SCREEN
   if(page!=previous){
    if(previous==Page::Home&&page==Page::Files&&sdReady&&menuCount()>0)
@@ -3073,6 +3108,7 @@ void loop(){
   }
  }
  if(speaking){SpeechLock lock;if(reader.done())speaking=false;}
+ if(page==Page::Home&&ready&&!speaking)loadHomeShortcuts();
 #ifdef CARDPUTER_VOICE_CHANGER
  if(page==Page::VoiceChanger)updateVoice();
 #endif

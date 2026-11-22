@@ -697,6 +697,10 @@ void key(const HeadlessKeyboard::Event& e,const HeadlessKeyboard::State& s) {
  const char base=keys::plain[e.row][e.col];
  const bool enter=e.row==2&&e.col==13;
  const bool escape=s.fn&&e.row==0&&e.col==0;
+ if(e.down&&s.alt&&e.row*14+e.col!=keyboardMap::altKey){
+  if(forwarding)localShortcut();
+  return;
+ }
  if(screen==Screen::Session&&session&&session->state==State::Trust){
   if(!e.down)return;
   if(escape){

@@ -28,15 +28,22 @@ struct HeadlessSprite {
 };
 class HeadlessKeyboard {
 public:
-    struct State {
-        bool ctrl = false, shift = false, fn = false, opt = false, alt = false, enter = false, space = false;
+    struct Modifiers {
+        bool ctrl = false, shift = false, fn = false, opt = false, alt = false;
+        bool operator==(const Modifiers &other) const {
+            return ctrl == other.ctrl && shift == other.shift && fn == other.fn &&
+                   opt == other.opt && alt == other.alt;
+        }
+    };
+    struct State : Modifiers {
+        bool enter = false, space = false;
         bool backspace = false, del = false, esc = false;
         uint8_t modifiers = 0;
         std::vector<char> word;
         std::vector<uint8_t> hid_keys;
     };
     using KeysState = State;
-    struct Event { uint8_t row, col; bool down; };
+    struct Event { uint8_t row, col; bool down; Modifiers heldModifiers{}; };
     bool begin();
     void update();
     bool isChange() const { return changed; }
@@ -47,6 +54,7 @@ public:
     bool quitRequested() const { return quitChord; }
     bool keyDown(unsigned row, unsigned col) const { return row<4 && col<14 && held[row][col]; }
 private:
+    Modifiers heldModifiers() const { return {held[3][0], held[2][1], held[2][0], held[3][1], held[3][2]}; }
     bool held[4][14]{};
     bool changed = false, ready = false, quitChord = false;
     State state;

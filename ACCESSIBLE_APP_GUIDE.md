@@ -45,8 +45,8 @@ without looking at the display. For example, a counter would work as follows.
    Period increases. Alt Q returns home.”
 2. Press period. Hear “Count, one.” Press semicolon. Hear “Count, zero.”
    At the lower bound, hear “Minimum, zero.”
-3. Press Option + R to repeat. Confirm the latest count is the repeatable
-   announcement. Option + Space stops speech. Option + H reads shortcut help.
+3. Press Alt + R to repeat. Confirm the latest count is the repeatable
+   announcement. Alt + Space stops speech. Alt + H reads shortcut help.
 4. Press Alt + Q. Hear Home and the current selection. Reopen Counter and
    confirm the documented re-entry behavior.
 

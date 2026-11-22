@@ -7,7 +7,7 @@ Accessible firmware for the **M5Stack Cardputer ADV** with keyboard navigation a
 - [Install, update, or recover the firmware](FLASHING.md)
 - [Keyboard controls and PlayPalace setup](research/offline-reader/UNIFIED_CONTROLS.md)
 
-On first boot, use the semicolon and period keys to move through Home, Enter to select, and Option + H for spoken help. Alt + Q returns Home. Basic menus and speech work without Wi-Fi or a microSD card. A microSD card is needed for file browsing, recording, and PlayPalace profile storage.
+On first boot, use the semicolon and period keys to move through Home, Enter to select, and Alt + H for spoken help. Alt + Q returns Home. Basic menus and speech work without Wi-Fi or a microSD card. A microSD card is needed for file browsing, recording, and PlayPalace profile storage.
 
 ## Research and development
 

@@ -7,7 +7,7 @@ namespace playpalace {
 struct Key {
     char base, character;
     int function;
-    bool fn, shift, ctrl, alt;
+    bool fn, shift, ctrl, option;
 };
 
 using Speak = void (*)(const String&, bool, bool);

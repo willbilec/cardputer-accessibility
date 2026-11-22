@@ -36,7 +36,7 @@ uses numbered book folders and chapter MP3s named like
   saves a separate resume position on exit and resumes it when reopened.
 - V lists available versions or announces the only installed version.
   Switching versions opens the same chapter from the beginning if available.
-- Option + H reads help. Alt + Q returns Home.
+- Alt + H reads help. Alt + Q returns Home.
 
 The app finds 3 John 1 in the John folder and presents it under 3 John.
 
@@ -55,23 +55,23 @@ In Home, Settings, Time zone, File manager, file actions, and the Wi-Fi
 network list, hold up or down to move through multiple items. A single press
 wraps at the ends. Holding a key stops at the end of the list. Comma jumps
 to the first item and slash to the last. Space reads the current selection
-and its position. Control stops speech, and Option + H reads menu help.
+and its position. Alt + Space stops speech, and Alt + H reads menu help.
 
-Global controls:
+Hold Alt for shared screen-reader commands. Option is available for app and
+connected-computer shortcuts.
 
-- Option + Function + semicolon / period: reader volume up / down.
-- Option + semicolon / period: reader speed down / up.
 - Alt + comma / slash: reader speed down / up.
 - Alt + minus / equals: media volume down / up.
 - Alt + left bracket / right bracket: speech volume down / up.
 - Alt + semicolon / period: reader and media volume up / down together.
   In PlayPalace this also adjusts effects volume.
-- Option + Space: stop speech. Option + R: repeat. Option + H: shortcut help.
-  The standard unified reader supports rates up to 650. Rates through 450
-  use native eSpeak timing. Above 450, the reader compresses the generated
-  audio in time while preserving its pitch. NVDA Remote uses native eSpeak
-  timing during a connection and restores the saved boost when you leave.
+- Alt + Space: stop speech. Alt + R: repeat. Alt + H: shortcut help.
 - Alt + Q: home. Alt + B: approximate battery. Alt + T: time. Alt + N: network.
+
+The standard unified reader supports rates up to 650. Rates through 450 use
+native eSpeak timing. Above 450, the reader compresses the generated audio in
+time while preserving its pitch. NVDA Remote uses native eSpeak timing during
+a connection and restores the saved boost when you leave.
 
 Home contains Voice recorder, File manager, Bluetooth and USB keyboard when
 selected, Settings, and Browse SD card over USB or Wi-Fi when included. The
@@ -129,7 +129,7 @@ Use Refresh SD card in the action menu after inserting or replacing a card.
 
 Open a TXT file to read it with offline speech. Enter or period reads the next
 section. Semicolon goes back through the last 64 sections, Space rereads the
-current section, and comma starts over. Option H reads the controls. Backspace
+current section, and comma starts over. Alt H reads the controls. Backspace
 returns to the file list. Text files can be ASCII or UTF-8.
 
 Open a WAV, MP3, or Ogg Vorbis file to play it. Ogg Vorbis files can use the
@@ -166,7 +166,7 @@ The alternate defaults are Semicolon for Up, Comma for Left, Period for Down,
 Slash for Right, the top-left Backtick / Tilde key for Escape, and Backslash
 for Windows. Option defaults to Windows (GUI)
 in both layers. Tap Option to send Windows alone or hold it with a remote key.
-Option + M and the shared Option reader shortcuts still run locally. Each
+Option + M and shared Alt reader shortcuts run locally. Each
 Bluetooth slot and USB remember their keyboard layer and keyboard or mouse mode.
 The high beep confirms the alternate layer and the low beep confirms the
 regular layer over Bluetooth or USB.
@@ -275,7 +275,7 @@ select Voice changer. Press Enter to open it.
 | Space or Apostrophe, immediately left of Enter | Replay the last clip with the currently selected effect. |
 | M | Start or stop live monitoring. Use headphones to avoid speaker feedback. |
 | Left or right bracket | Decrease or increase the shared microphone gain in 3 dB steps. Voice recorder and Recording settings use this same setting. |
-| H or Option + H | Hear the controls. |
+| H or Alt + H | Hear the controls. |
 | Option + Backspace | Stop playback or monitoring. The clip remains available for replay. |
 | Backspace or Alt + Q | Return to Home and discard the clip. |
 
@@ -307,8 +307,8 @@ continuing at the left of each higher row. Play up to eight notes together.
   Another loop shortcut replaces the current loop, and the same shortcut
   restarts it. Option+Backspace or Option+Tilde stops the loop. Changing presets
   also stops it.
-- Option+H speaks the synth controls and Option+Fn+R announces the current
-  preset. Option+Space stops speech. Alt+minus and Alt+equals adjust synth
+- Alt+H speaks the synth controls and Option+Fn+R announces the current
+  preset. Alt+Space stops speech. Alt+minus and Alt+equals adjust synth
   volume. Alt+brackets adjust speech volume. Holding Option while playing
   the left or right arrow adds arpeggio. Alt+Q stops the synth and returns Home.
 
@@ -346,7 +346,7 @@ It uses the expanded 8 MiB partition layout in `partitions-playpalace.csv`.
   F6 toggles table chat and Shift+F6 toggles global chat.
 - History, score, and status read-throughs complete before new server
   announcements play. Press a key to interrupt a read-through. Control
-  (bottom-left) or Option+Space stops speech.
+  (bottom-left) or Alt+Space stops speech.
 - A new game menu takes priority over ordinary focus and chat speech. PlayPalace
   disables Wi-Fi modem sleep while connected for faster replies, which can
   increase battery use during play.

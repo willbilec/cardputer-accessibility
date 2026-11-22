@@ -51,10 +51,13 @@ void HeadlessKeyboard::update() {
         int row = (originalCol + 4) % 4, col = originalRow * 2 + (originalCol > 3);
         if (row < 4 && col < 14) {
             bool down = raw & 0x80;
-            if (held[row][col] != down) { changed = true; keyEvents.push_back({uint8_t(row),uint8_t(col),down}); }
-            held[row][col] = down;
+            if (held[row][col] != down) {
+                held[row][col] = down;
+                changed = true;
+                keyEvents.push_back({uint8_t(row),uint8_t(col),down,heldModifiers()});
+            }
             if (down && ((row == 1 && col == 1) || (row == 3 && col == 2)) &&
-                held[1][1] && held[3][2] && !held[3][0] && !held[3][1] && !held[2][0]) {
+                held[1][1] && held[3][2] && !held[3][0] && !held[3][1] && !held[2][0] && !held[2][1]) {
                 quitChord = true;
             }
         }
@@ -64,8 +67,7 @@ void HeadlessKeyboard::update() {
     state.word.clear(); state.hid_keys.clear();
     state.enter=held[2][13]; state.space=held[3][13];
     state.backspace=state.del=state.esc=false;
-    state.shift = held[2][1]; state.ctrl = held[3][0]; state.fn = held[2][0];
-    state.opt=held[3][1]; state.alt=held[3][2];
+    static_cast<Modifiers &>(state) = heldModifiers();
     state.modifiers=(state.ctrl?1:0)|(state.shift?2:0)|(state.alt?4:0);
     for (int row = 0; row < 4; ++row) for (int col = 0; col < 14; ++col) if (held[row][col]) {
         uint8_t hid = keys::hidUsage(row,col,state.fn);

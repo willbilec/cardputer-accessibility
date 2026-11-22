@@ -74,6 +74,6 @@ python -m esptool --chip esp32s3 --port PORT --before no-reset --after watchdog-
 
 ## First boot and recovery
 
-After reboot, press period to hear the next Home item or Option + H for menu help. Use the [controls guide](research/offline-reader/UNIFIED_CONTROLS.md) for SD, Wi-Fi, and PlayPalace setup. The optional PlayPalace sound bank can be generated from a local copy of the desktop client sounds with [the conversion script](research/offline-reader/prepare_playpalace_effects.py) and FFmpeg. Run the script with the sounds directory and an output path of `PlayPalace/effects.ppfx` on the SD card.
+After reboot, press period to hear the next Home item or Alt + H for menu help. Use the [controls guide](research/offline-reader/UNIFIED_CONTROLS.md) for SD, Wi-Fi, and PlayPalace setup. The optional PlayPalace sound bank can be generated from a local copy of the desktop client sounds with [the conversion script](research/offline-reader/prepare_playpalace_effects.py) and FFmpeg. Run the script with the sounds directory and an output path of `PlayPalace/effects.ppfx` on the SD card.
 
 If the device fails to boot, re-enter download mode with G0. Check the USB cable, serial port and esptool output, then retry with the four files from the same release. To return to the vendor firmware, follow [M5Stack's factory restore procedure](https://docs.m5stack.com/en/guide/cardputer_adv/restore_factory).

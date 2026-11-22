@@ -1,10 +1,14 @@
 #include <cassert>
 #include <iostream>
+#include "global_shortcuts.h"
 #include "../src/headless_board.cpp"
 
-static void event(int row, int col, bool down) {
+static void queueEvent(int row, int col, bool down) {
     int raw = (col / 2) * 10 + row + ((col % 2) ? 4 : 0) + 1;
     Wire.events.push_back(raw | (down ? 0x80 : 0));
+}
+static void event(int row, int col, bool down) {
+    queueEvent(row, col, down);
     M5Cardputer.Keyboard.update();
 }
 int main() {
@@ -41,6 +45,22 @@ int main() {
     Wire.events.push_back(14);
     M5Cardputer.Keyboard.update();
     assert(M5Cardputer.Keyboard.quitRequested() && !M5Cardputer.Keyboard.isPressed());
+    // Preserve the modifier on the letter event even if the chord has ended
+    // by the time the launcher gets the full batch of events.
+    for (int modifier : {1, 2}) {
+        queueEvent(3, modifier, true);
+        queueEvent(1, 5, true);
+        queueEvent(1, 5, false);
+        queueEvent(3, modifier, false);
+        M5Cardputer.Keyboard.update();
+        const auto &events = M5Cardputer.Keyboard.events();
+        assert(events.size()==4 && !M5Cardputer.Keyboard.isPressed());
+        const auto &letter=events[1];
+        const auto &m=letter.heldModifiers;
+        using globalShortcuts::Command;
+        assert(globalShortcuts::route({letter.row,letter.col,letter.down,m.opt,m.fn,m.alt,m.ctrl,m.shift})==
+               (modifier==2 ? Command::Time : Command::None));
+    }
     event(2,13,true); assert(M5Cardputer.Keyboard.keysState().enter); event(2,13,false);
     int16_t pcm[16]; std::fill_n(pcm,16,int16_t(123));
     assert(M5Cardputer.Speaker.playRaw(pcm,16,22050,false,1,1));

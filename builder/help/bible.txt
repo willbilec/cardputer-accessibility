@@ -7,4 +7,4 @@ on in that book folder. In the Builder, select Bible Reader and enable the
 help text and setup files option. The guide and sorting scripts download to
 workspace/help/current.
 Choose Bible, then a version, book, and chapter. Space plays or pauses.
-Option+H reads controls.
+Alt+H reads controls.
