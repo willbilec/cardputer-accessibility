@@ -2,28 +2,21 @@
 
 ## Active project
 
-- The workspace root is the GitHub checkout. Run `git status` here before editing and preserve existing changes.
-- The desktop builder is in [builder](builder). The unified firmware, controls, and tests are in [research/offline-reader](research/offline-reader).
-- Use [README.md](README.md) as the index, [BUILDING.md](BUILDING.md) for build, packaging, and test commands, and [FLASHING.md](FLASHING.md) for installation and recovery.
-- When adding or changing a selectable module, follow [the module and help authoring guide](BUILDING.md#adding-modules-and-releasing). Register build inputs in `builder/modules.json`, put on-device help and setup resources in `builder/help/`, and update the unified controls when keys change.
-- Keep tagged releases to the Windows builder and one universal firmware bundle. GitHub provides the source archives. Keep app resources in the tagged source and preserve the builder metadata in the release notes.
-- The local `archived` directory is excluded from Git. It contains earlier experiments, old release artifacts, and private device captures. Preserve upstream checkout instructions and read them before editing third-party code.
+- Run `git status` at the checkout root before editing and preserve existing changes.
+- The desktop builder is in `builder/`. Unified firmware and tests are in `research/offline-reader/`. Use [README.md](README.md) as the documentation index.
+- Follow [BUILDING.md](BUILDING.md) for builds, tests, module registration, help files, release packaging, and cleanup. Keep generated caches and private captures out of Git. Read upstream instructions before editing third-party checkouts.
 
 ## Maintaining accessibility
 
 - Follow the [accessible app guide](ACCESSIBLE_APP_GUIDE.md) for apps and the [future firmware guide](FUTURE_FIRMWARE_GUIDE.md) for service ownership and lifecycle. For standalone firmware, use the [offline speech guide](TTS_FIRMWARE_GUIDE.md).
-- Preserve keyboard-only use and offline speech. Reserve physical Alt for shared screen-reader commands. A tap of Alt switches keyboard layers in the Keyboard app, Key Map Manager, and NVDA Remote. Use unmodified keys or Option for app-specific commands, and check for existing shared Option shortcuts.
-- Backspace returns to the parent from menus. For Help, a document returns to the Help list and Backspace in the list returns to Home with Help selected.
-- Announce meaningful focus, state, errors, and progress. Avoid speaking newly entered passwords by default and keep credentials out of diagnostics. The legacy Wi-Fi password entry echoes keys, so account for that existing behavior if editing it.
-- Use [unified controls](research/offline-reader/UNIFIED_CONTROLS.md) as the shortcut reference. The user uses a screen reader. Distinguish automated verification from live device or screen-reader acceptance.
+- Preserve keyboard-only use and offline speech. Reserve physical Alt for shared screen-reader and keyboard-layer commands. Check the [unified controls](research/offline-reader/UNIFIED_CONTROLS.md) before assigning app shortcuts.
+- **Backspace is the global Back key in menus and navigation lists.** Verify it for every menu you add or change. See the [app guide](ACCESSIBLE_APP_GUIDE.md#2-describe-the-app-in-keyboard-and-speech-terms).
+- Announce focus, state changes, and errors. Keep credentials out of speech and diagnostics when editing password flows. Distinguish host checks from live device and screen-reader acceptance.
 
 ## Building and flashing
 
-- Build with the desktop builder or `python builder/build.py <new-output-directory> --preset all` from the checkout. It packages matching firmware, bootloader, and partition files with checksums. Run the builder and firmware host tests documented in BUILDING.md.
-- Reuse the builder's compiler cache and keep at most two automatic recovery builds. Keep private backups and intentionally exported bundles separate from disposable build outputs. Skip making archive copies of compiler caches.
-- For routine app-only updates, preserve the existing local recovery image and write only the application at `0x10000`. Skip partition backups and flash dumps. Check the installed table with esptool `verify-flash` against the build's `partitions.bin`. A layout migration is a separate confirmed operation.
-- When the launcher is running, enter download mode before the first esptool connection. Open the application port at 1200 baud for about 250 ms, close it, then enumerate the ports again. The touch may disconnect the application port during the open. Windows may change the COM number, USB interface, and serial descriptor. Match the normalized serial or physical USB location and verify the MAC with esptool before writing. Use G0 and a data cable if no matching download port appears.
-- Use esptool without an automatic reset when the device is already in download mode. Verify the partition digest before writing and the image digest afterward. Reboot and verify the reported version. Where listening is possible, check the spoken startup announcement.
+- Follow [FLASHING.md](FLASHING.md). For a running launcher, do the 1200-baud touch before esptool. Match the new port and verify the MAC. Use esptool without an automatic reset in download mode.
+- Routine updates write only the app at `0x10000` after an in-place partition digest check. Preserve the recovery image and skip flash dumps. Verify the written image and the reported version after reboot. Confirm a partition migration separately.
 
 ## Search and history
 

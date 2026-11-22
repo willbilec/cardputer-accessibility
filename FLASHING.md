@@ -27,6 +27,13 @@ python -c "from hashlib import sha256; from pathlib import Path; entries=[line.s
 
 ## Enter download mode
 
+When the accessible launcher is running, open its application serial port
+at 1200 baud for about 250 ms, then close it and enumerate ports again.
+Windows can change the COM number, USB interface and serial descriptor.
+Match the normalized USB serial or physical USB location and verify the
+device MAC with esptool before writing. The port may disconnect during the
+touch. If it never returns in download mode, use G0.
+
 Close serial monitors and unplug USB. Switch the Cardputer ADV off. Press and
 hold G0, the button on the back edge just to the right of the power switch.
 Keep it held while connecting the device with a USB-C data cable. Release G0

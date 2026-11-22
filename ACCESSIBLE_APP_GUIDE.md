@@ -29,6 +29,13 @@ Reserve physical Alt for shared screen-reader commands. A tap of Alt switches
 layers in keyboard modes that support layer switching. Choose unmodified
 keys or Option chords for app commands, checking shared Option bindings first.
 
+Backspace is the global Back key in menus and navigation lists. Use the
+shared back handling or return directly to the immediate parent. Restore
+focus to the item that opened the menu and announce the new focus. In a text
+field, Backspace edits the text. In Help, it returns from a document to the
+Help list, then from the list to Home with Help selected. Verify each Backspace
+transition when adding or changing a menu.
+
 For each interactive screen, choose the keys, focus order, spoken feedback
 and exit behavior before implementing it. Use the existing global commands
 and menu conventions. Make the essential workflow usable from power-on

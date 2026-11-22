@@ -67,11 +67,10 @@ automatic recovery bundle, and clears stale release caches and temporary
 toolchain downloads. Save any firmware you want to keep long-term to a
 separate folder. Keep the workspace when updating the program.
 
-On Windows, close the builder before running
-`powershell -File builder/clean_workspace.ps1` from the checkout to see
-which stale caches and generated bundles can be removed. Add `-Apply` to
-perform the cleanup. The script keeps the two newest workspace bundles and
-leaves device backups alone.
+On Windows, close the builder and open **Clean Cardputer Workspace.cmd** in
+the checkout. It lists the stale caches and generated bundles it can remove.
+Type `CLEAN` to confirm, or press Enter to cancel. It keeps the two newest
+workspace bundles and leaves device backups alone.
 
 The builder checks for program updates on GitHub. It verifies the SHA-256
 checksum of each updated Python file and loads the new program the next time

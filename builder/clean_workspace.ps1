@@ -1,14 +1,12 @@
-# Run without -Apply to list the generated files eligible for removal.
+# Without switches, only preview the generated files eligible for removal.
 [CmdletBinding(SupportsShouldProcess)]
-param([switch]$Apply)
+param([switch]$Apply, [switch]$Interactive)
 
 $ErrorActionPreference = 'Stop'
+if ($Apply -and $Interactive) { throw 'Choose -Apply or -Interactive.' }
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
 if (-not (Test-Path -LiteralPath (Join-Path $root 'builder/modules.json') -PathType Leaf)) {
     throw "Cardputer checkout not found at $root."
-}
-if ($Apply -and (Get-Process -Name 'xtensa*','scons*' -ErrorAction SilentlyContinue)) {
-    throw 'Wait for the compiler to finish before cleaning.'
 }
 
 $targets = @(
@@ -41,6 +39,7 @@ if (Test-Path -LiteralPath $builds -PathType Container) {
 
 $prefix = $root + [IO.Path]::DirectorySeparatorChar
 $total = 0
+$eligible = [System.Collections.Generic.List[string]]::new()
 foreach ($relative in $targets) {
     $target = [IO.Path]::GetFullPath((Join-Path $root $relative))
     if (-not $target.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
@@ -62,9 +61,34 @@ foreach ($relative in $targets) {
     $size = ($entries | Where-Object { -not $_.PSIsContainer } | Measure-Object -Property Length -Sum).Sum
     $total += $size
     '{0,8:N0} MiB  {1}' -f ($size / 1MB), $relative
-    if ($Apply -and $PSCmdlet.ShouldProcess($target, 'Remove generated workspace files')) {
-        Remove-Item -LiteralPath $target -Recurse -Force
-    }
+    $eligible.Add($target)
 }
 '{0:N2} GiB of generated files listed' -f ($total / 1GB)
-if (-not $Apply) { 'Preview only. Run again with -Apply to remove the listed files.' }
+if ($eligible.Count -eq 0) { return }
+if ($Interactive) {
+    $Apply = (Read-Host 'Close the builder. Type CLEAN to remove the listed folders, or press Enter to cancel') -ceq 'CLEAN'
+    if (-not $Apply) { 'Cleanup cancelled.'; return }
+}
+if (-not $Apply) {
+    'Preview only. Run again with -Apply to remove the listed files.'
+    return
+}
+if (Get-Process -Name 'xtensa*','scons*' -ErrorAction SilentlyContinue) {
+    throw 'Wait for the compiler to finish before cleaning.'
+}
+foreach ($target in $eligible) {
+    if (-not (Test-Path -LiteralPath $target -PathType Container)) { continue }
+    for ($path = $target; $path -ne $root; $path = [IO.Path]::GetDirectoryName($path)) {
+        if ((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            throw "Target changed to a link or junction: $path"
+        }
+    }
+    if (Get-ChildItem -LiteralPath $target -Recurse -Force -Attributes ReparsePoint | Select-Object -First 1) {
+        Write-Warning "Skipped $target because it now contains a link or junction."
+        continue
+    }
+    if ($PSCmdlet.ShouldProcess($target, 'Remove generated workspace files')) {
+        Remove-Item -LiteralPath $target -Recurse -Force
+        "Removed $target"
+    }
+}
