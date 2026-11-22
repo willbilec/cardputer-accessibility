@@ -12,8 +12,8 @@ from unittest.mock import patch
 from zipfile import ZipFile
 
 from build import APP_CAPACITY, ENVIRONMENT, ROOT, build_locked, compiler_jobs, digest, generate, load_modules, resolve_components
-from catalog import describe_asset, device_update_summary, fetch_asset, install_sd, installed_version, source_tree
-from flash import FLASH_BYTES, check_layout, flash
+from catalog import build_release, describe_asset, device_update_summary, fetch_asset, install_sd, installed_version, source_tree
+from flash import FLASH_BYTES, MIGRATION_FILES, check_layout, find_download_port, flash, verify_build
 from source_files import firmware_files
 from progress import output_events
 from program_update import install_update, write_update_assets
@@ -184,10 +184,65 @@ class BuilderTests(unittest.TestCase):
         with patch("catalog.request", return_value=io.BytesIO(data)):
             self.assertTrue(install_sd(card, catalog, module, cache))
         with patch("catalog.request", side_effect=AssertionError("Network should not be used")):
-            self.assertTrue(fetch_asset(catalog, asset, cache).exists())
+            self.assertTrue((cache / "downloads/sd-guide").is_file())
             self.assertFalse(install_sd(card, catalog, module, cache))
         self.assertEqual(installed_version(card, module), "0.2.0")
         self.assertEqual(original.read_text(encoding="utf-8"), "Keep me")
+
+    def test_asset_update_keeps_one_verified_copy(self):
+        def asset(data):
+            return {"file": "guide.txt", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+
+        catalog = {"tag": "v0.2.0"}
+        with patch("catalog.request", return_value=io.BytesIO(b"first")):
+            original = fetch_asset(catalog, asset(b"first"), self.root)
+        with patch("catalog.request", return_value=io.BytesIO(b"wrong")):
+            with self.assertRaisesRegex(ValueError, "Checksum mismatch"):
+                fetch_asset(catalog, asset(b"later"), self.root)
+        self.assertEqual(original.read_bytes(), b"first")
+        with patch("catalog.request", return_value=io.BytesIO(b"later")):
+            self.assertEqual(fetch_asset(catalog, asset(b"later"), self.root), original)
+        self.assertEqual(list(original.parent.iterdir()), [original])
+        self.assertEqual(original.read_bytes(), b"later")
+
+    def test_precompiled_release_and_exact_reuse_skip_source_and_compiler(self):
+        archive = self.root / "release.zip"
+        files = {"firmware.bin": b"firmware", "partitions.bin": partition_table(),
+                 "bootloader.bin": b"bootloader", "boot_app0.bin": bytes(0x2000)}
+        source = {"file": "source.zip", "size": 100, "sha256": "a" * 64}
+        identity = {"launcher": "0.2.0", "modules": {"reader": "0.2.1"}, "screen": True}
+        identity["sha256"] = {name: hashlib.sha256(payload).hexdigest() for name, payload in files.items()}
+        with ZipFile(archive, "w") as bundle:
+            for name in MIGRATION_FILES.values():
+                bundle.writestr(name, files[name])
+            bundle.writestr("build.json", json.dumps(identity))
+        catalog = {"tag": "v0.2.0", "launcher": "0.2.0", "source": source,
+                   "modules": [{"id": "reader", "version": "0.2.1", "kind": "native"}],
+                   "precompiled": [{"asset": describe_asset(archive), "modules": ["reader"], "screen": True}]}
+        expected = self.root / "builds/first"
+        later = self.root / "builds/later"
+        def no_compiler(*args, **kwargs):
+            self.fail("The build should not run the compiler")
+        options = dict(screen=True, include_help=False, run=no_compiler, cache=self.root)
+        with patch("catalog.request", return_value=io.BytesIO(archive.read_bytes())) as fetch:
+            self.assertEqual(build_release(catalog, ["reader"], expected, **options), expected)
+            self.assertEqual(fetch.call_count, 1)
+        self.assertEqual(verify_build(expected)["release_source"], source["sha256"])
+        with patch("catalog.request", side_effect=AssertionError("No network needed")):
+            self.assertEqual(build_release(catalog, ["reader"], later, **options), expected)
+        self.assertFalse(later.exists())
+
+    def test_download_mode_follows_windows_interface_even_when_ids_differ(self):
+        application = SimpleNamespace(device="COM6", serial_number="B81F3F6FFE30", location="1-8:x.1")
+        rom = SimpleNamespace(device="COM4", serial_number="B8:1F:3F:6F:FE:30", location="1-8:x.0")
+        other = SimpleNamespace(device="COM7", serial_number="F0:12:34:56:78:90", location="1-9:x.0")
+        with (patch("flash.ports", side_effect=[[application], [other, rom]]),
+              patch("flash.serial.Serial") as touch,
+              patch("flash.time.sleep"),
+              patch("flash.identify", return_value="b8:1f:3f:6f:fe:30") as identify):
+            self.assertEqual(find_download_port("COM6"), ("COM4", "b8:1f:3f:6f:fe:30"))
+        touch.assert_called_once_with("COM6", 1200, timeout=0.25)
+        identify.assert_called_once_with("COM4")
 
     def test_release_source_is_verified_and_reused_offline(self):
         manifest = load_modules(ROOT)

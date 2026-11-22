@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "launcher": "0.2.7",
+  "launcher": "0.2.8",
   "supports_screen": true,
   "components": {
     "media-decoder": {

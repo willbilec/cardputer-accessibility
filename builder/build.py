@@ -13,6 +13,9 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
+
+from compile_firmware import trim_installer_cache
 
 ROOT = Path(os.environ.get("CARDPUTER_BUILDER_ROOT", Path(__file__).resolve().parents[1]))
 STATE = ROOT / "workspace"
@@ -61,7 +64,7 @@ def write_changed(path, contents, encoding="utf-8"):
 @contextmanager
 def project_lock(project):
     state = project / ".pio"
-    state.mkdir(exist_ok=True)
+    state.mkdir(parents=True, exist_ok=True)
     with (state / "builder.lock").open("a+b") as lock:
         lock.seek(0)
         try:
@@ -223,18 +226,18 @@ def verify_linked_codecs(artifacts, core, components):
 
 
 def build(root, selected, destination, run=subprocess.check_call, fetch=True, check_codecs=False,
-          screen=False, include_help=False, help_root=None):
+          screen=False, include_help=False, help_root=None, release_source=None, sdk_archive=None):
     root = root.resolve()
     destination = destination.resolve()
     catalog = load_modules(root)
     project = root / "research/offline-reader"
     with project_lock(project):
         return build_locked(root, project, catalog, selected, destination, run, fetch, check_codecs,
-                            screen, include_help, help_root)
+                            screen, include_help, help_root, release_source, sdk_archive)
 
 
 def build_locked(root, project, catalog, selected, destination, run, fetch, check_codecs, screen=False,
-                 include_help=False, help_root=None):
+                 include_help=False, help_root=None, release_source=None, sdk_archive=None):
     config, identity, core = generate(project, catalog, selected, screen, include_help)
     if fetch:
         dependencies = [str(PYTHON), "-u", str(root / "fetch_dependencies.py"), "--firmware"]
@@ -248,7 +251,12 @@ def build_locked(root, project, catalog, selected, destination, run, fetch, chec
     cpu_count = getattr(os, "process_cpu_count", os.cpu_count)() or 2
     jobs = compiler_jobs(cpu_count, available_memory())
     print(f"PlatformIO will use {jobs} compiler jobs on {cpu_count} available logical CPUs.", flush=True)
-    run([str(PYTHON), "-u", "-m", "platformio", "run", "--project-dir", str(project),
+    managed = core == (STATE / "toolchain").resolve()
+    launcher = ([str(Path(__file__).with_name("compile_firmware.py"))] if managed
+                else ["-m", "platformio"])
+    if managed and sdk_archive:
+        launcher.extend(["--sdk-archive", str(sdk_archive.resolve())])
+    run([str(PYTHON), "-u", *launcher, "run", "--project-dir", str(project),
          "--project-conf", str(config), "--disable-auto-clean", "-e", ENVIRONMENT,
          "-j", str(jobs)], cwd=project)
     artifacts = object_directory(project) / ENVIRONMENT
@@ -257,12 +265,31 @@ def build_locked(root, project, catalog, selected, destination, run, fetch, chec
     files = {name: artifacts / name for name in ("firmware.bin", "partitions.bin", "bootloader.bin")}
     files["boot_app0.bin"] = (
         core / "packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin")
+    if release_source:
+        identity["release_source"] = release_source
+    result = save_build(destination, files, identity, catalog, selected,
+                        (help_root or root / "builder/help") if include_help else None)
+    if managed:
+        trim_installer_cache(core)
+    return result
+
+
+def save_build(destination, files, identity, catalog, selected, help_root=None):
     if not 0 < files["firmware.bin"].stat().st_size <= APP_CAPACITY:
         raise ValueError("Firmware exceeds the large application partition")
-    destination.mkdir(parents=True, exist_ok=False)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=destination.parent) as staging:
+        bundle = Path(staging) / "bundle"
+        bundle.mkdir()
+        write_bundle(bundle, files, identity, catalog, selected, help_root)
+        bundle.rename(destination)
+    return identity
+
+
+def write_bundle(destination, files, identity, catalog, selected, help_root):
     for name, source in files.items():
         shutil.copyfile(source, destination / name)
-    if include_help:
+    if help_root is not None:
         help_modules = [module for module in catalog["modules"]
                         if module["id"] in selected and module.get("help")]
         help_dir = destination / "sdcard" / "Help"
@@ -272,19 +299,18 @@ def build_locked(root, project, catalog, selected, destination, run, fetch, chec
         for filename in dict.fromkeys(filenames):
             if not re.fullmatch(r"[A-Za-z0-9_-]+\.txt", filename):
                 raise ValueError(f"Invalid help filename: {filename}")
-            source = (Path(help_root) if help_root is not None else root / "builder" / "help") / filename
+            source = Path(help_root) / filename
             if not source.is_file():
                 raise ValueError(f"Missing help document: {source}")
             shutil.copyfile(source, help_dir / filename)
         identity["help_documents"] = list(dict.fromkeys(filenames))
     identity["sha256"] = {name: digest(destination / name) for name in files}
-    if include_help:
+    if help_root is not None:
         identity["sha256"].update({
             path.relative_to(destination).as_posix(): digest(path)
             for path in (destination / "sdcard" / "Help").glob("*.txt")
         })
     (destination / "build.json").write_text(json.dumps(identity, indent=2), encoding="utf-8")
-    return identity
 
 
 if __name__ == "__main__":

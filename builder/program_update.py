@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import shutil
 import tempfile
 
 from build import ROOT, STATE, digest, load_modules
@@ -12,7 +13,19 @@ from catalog import GITHUB_API, RELEASE_BASE, REPOSITORY, request, version
 RUNTIME_ABI = 2
 MAX_UPDATE_BYTES = 4 * 1024**2
 PROGRAM_FILES = ("app.py", "build.py", "catalog.py", "flash.py", "progress.py",
-                 "program_update.py", "source_files.py")
+                 "program_update.py", "source_files.py", "compile_firmware.py")
+
+
+def trim_programs(state=STATE):
+    try:
+        active = json.loads((state / "program-update.json").read_text(encoding="utf-8"))["version"]
+        version(active)
+        for directory in (state / "program").iterdir():
+            if (directory.name != active and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", directory.name)
+                    and (directory / "program.json").is_file()):
+                shutil.rmtree(directory, ignore_errors=True)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
 
 
 def check_update():

@@ -11,18 +11,18 @@ import wx
 from wx.lib.scrolledpanel import ScrolledPanel
 
 from build import NO_CONSOLE, ROOT, build, load_modules
-from catalog import (STATE, cached_catalog, device_update_summary, download_app_resources, install_sd,
-                     installed_version, refresh, source_tree, version)
-from flash import flash, ports, read_identity
+from catalog import (STATE, build_release, cached_catalog, device_update_summary, install_sd,
+                     installed_version, refresh, saved_builds, version)
+from flash import flash, ports, read_identity, same_usb_device
 from progress import output_events
-from program_update import check_update, install_update
+from program_update import check_update, install_update, trim_programs
 
 RECOVERY = (
     "If the Cardputer fails to start or speak, unplug USB and switch power off. "
     "Hold the G0 button on the back edge, just to the right of the power switch. "
     "Keep holding it while plugging a USB-C data cable into the computer. Release it after USB powers the device. "
     "The download port may have a different name. Close serial monitors, refresh USB ports here, "
-    "select the download port, and use Flash a saved build. To restore the vendor software, "
+    "select the download port, and use Flash selected build. To restore the vendor software, "
     "select Cardputer ADV factory firmware in M5Burner. Keep the cable connected during writing and verification."
 )
 
@@ -38,6 +38,7 @@ class Builder(wx.Frame):
         self.local = load_modules(ROOT) if (ROOT / "builder/modules.json").is_file() and (
             ROOT / "research/offline-reader/platformio.ini").is_file() else None
         self.port_records = []
+        self.build_records = []
         self.actions = []
 
         layout.Add(wx.StaticText(panel, label="Firmware source"), 0, wx.ALL, 6)
@@ -67,7 +68,7 @@ class Builder(wx.Frame):
             self.help_pane.GetPane(), label="Include Keyboard learning in the Help menu")
         self.key_learning.SetName("Include Keyboard learning")
         self.include_help = wx.CheckBox(
-            self.help_pane.GetPane(), label="Include help text for selected apps (downloaded only when selected)")
+            self.help_pane.GetPane(), label="Include help text and download setup files for selected apps")
         self.include_help.SetName("Include help text for selected apps")
         help_layout.Add(self.key_learning, 0, wx.ALL, 4)
         help_layout.Add(self.include_help, 0, wx.ALL, 4)
@@ -78,15 +79,20 @@ class Builder(wx.Frame):
         layout.Add(wx.StaticText(panel, label="Cardputer USB port"), 0, wx.ALL, 6)
         self.port = wx.Choice(panel, name="Cardputer USB port")
         layout.Add(self.port, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 6)
+        self.button(panel, layout, "Refresh USB ports (F5)", self.refresh_ports)
         self.button(panel, layout, "Build and flash", lambda _: self.start_build("flash"))
+        layout.Add(wx.StaticText(panel, label="Saved firmware builds"), 0, wx.ALL, 6)
+        self.saved = wx.Choice(panel, name="Saved firmware builds")
+        layout.Add(self.saved, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 6)
+        self.flash_saved_button = self.button(panel, layout, "Flash selected build", self.flash_saved)
         tools = wx.Menu()
         for label, handler in (
             ("Check for builder updates", self.update_builder),
             ("Refresh GitHub catalog", self.refresh_catalog),
-            ("Refresh USB ports", self.refresh_ports),
+            ("Refresh USB ports\tF5", self.refresh_ports),
             ("Update installed firmware", self.update_firmware),
             ("Install large partition", self.migrate),
-            ("Flash a saved build", self.flash_saved),
+            ("Browse for a saved build", self.browse_saved),
             ("Update SD packages", self.update_sd),
         ):
             item = tools.Append(wx.ID_ANY, label)
@@ -102,6 +108,7 @@ class Builder(wx.Frame):
         self.dialog_open = False
         self.Bind(wx.EVT_CLOSE, self.on_close)
         self.refresh_ports()
+        self.refresh_saved()
         try:
             self.catalog = cached_catalog()
         except (OSError, ValueError, KeyError, TypeError):
@@ -120,6 +127,7 @@ class Builder(wx.Frame):
         control.Bind(wx.EVT_BUTTON, handler)
         layout.Add(control, 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
         self.actions.append(control)
+        return control
 
     def selected_catalog(self):
         return self.local if self.local and self.source.GetSelection() == 0 else self.catalog
@@ -153,7 +161,7 @@ class Builder(wx.Frame):
             if item.get("requires_setup"):
                 description = "Requires extra setup. " + description
                 if item.get("setup_guide"):
-                    description += " The guide and setup files download when this app is selected."
+                    description += " Download its setup files from Help options."
             self.modules.SetItem(index, 2, description)
             self.modules.SetItem(index, 3, item["version"])
             self.set_module(index, (item["id"] != "key-learning") if retain is None else item["id"] in retain)
@@ -222,7 +230,7 @@ class Builder(wx.Frame):
         focus = wx.Window.FindFocus()
         self.log.SetFocus()
         self.GetMenuBar().EnableTop(0, False)
-        for control in [*self.actions, self.source, self.modules, self.port, self.screen,
+        for control in [*self.actions, self.source, self.modules, self.port, self.saved, self.screen,
                         self.help_pane, self.key_learning, self.include_help]:
             control.Disable()
         self.report(label)
@@ -236,6 +244,8 @@ class Builder(wx.Frame):
                 control.Enable()
             self.update_screen_checkbox()
             self.key_learning.Enable(any(item["id"] == "key-learning" for item in self.native))
+            self.refresh_ports()
+            self.refresh_saved()
             if focus:
                 focus.SetFocus()
             if error is not None:
@@ -342,15 +352,27 @@ class Builder(wx.Frame):
         self.work("Checking installed Cardputer firmware and apps.", perform, ready)
 
     def refresh_ports(self, _=None):
-        old = self.port.GetStringSelection()
+        index = self.port.GetSelection()
+        old = self.port_records[index] if index != wx.NOT_FOUND else None
         self.port_records = ports()
         self.port.Set([f"{port.device} — {port.description}" for port in self.port_records])
-        if old and self.port.FindString(old) != wx.NOT_FOUND:
-            self.port.SetStringSelection(old)
-        elif len(self.port_records) == 1:
+        matches = [index for index, port in enumerate(self.port_records)
+                   if old and same_usb_device(old, port)]
+        if len(matches) == 1:
+            self.port.SetSelection(matches[0])
+        elif old is None and len(self.port_records) == 1:
             self.port.SetSelection(0)
+        else:
+            self.port.SetSelection(wx.NOT_FOUND)
+        if _ is not None:
+            message = (f"Found {len(self.port_records)} Cardputer USB port(s)."
+                       if self.port_records else "No Cardputer USB ports found.")
+            if self.port.GetSelection() != wx.NOT_FOUND:
+                message += f" Selected {self.port_records[self.port.GetSelection()].device}."
+            self.notify(message)
 
     def selected_port(self):
+        self.refresh_ports()
         index = self.port.GetSelection()
         if index == wx.NOT_FOUND:
             message = "Select the Cardputer USB port first."
@@ -363,7 +385,7 @@ class Builder(wx.Frame):
     def command(self, args, *, cwd):
         if "--firmware" in args:
             phase = "Audio and keyboard dependency setup"
-        elif "-m" in args and "platformio" in args:
+        elif "--project-conf" in args:
             phase = f"PlatformIO toolchain setup and compilation with {args[args.index('-j') + 1]} jobs"
         else:
             phase = "Preparing the audio library"
@@ -442,15 +464,39 @@ class Builder(wx.Frame):
         finished.wait()
         return result
 
+    def refresh_saved(self):
+        index = self.saved.GetSelection()
+        previous = self.build_records[index] if index != wx.NOT_FOUND else None
+        entries = list(saved_builds())
+        self.build_records = [path for path, _ in entries]
+        labels = []
+        for path, manifest in entries:
+            display = "LCD on" if manifest.get("screen") else "LCD off"
+            app_count = len(manifest["modules"])
+            labels.append(f"{path.name} — firmware {manifest['launcher']}, {app_count} apps, {display}")
+        self.saved.Set(labels)
+        if entries:
+            self.saved.SetSelection(self.build_records.index(previous) if previous in self.build_records else 0)
+        self.saved.Enable(bool(entries))
+        self.flash_saved_button.Enable(bool(entries))
+
     def flash_saved(self, _):
-        port = self.selected_port()
-        if port is None:
-            return
+        index = self.saved.GetSelection()
+        if index != wx.NOT_FOUND:
+            self.run_saved_flash(self.build_records[index])
+
+    def browse_saved(self, _):
         with wx.FileDialog(self, "Open build.json from a saved build", defaultDir=str(STATE / "builds"),
                            wildcard="Builder manifest (build.json)|build.json", style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as picker:
             if picker.ShowModal() != wx.ID_OK:
                 return
             output = Path(picker.GetPath()).parent
+        self.run_saved_flash(output)
+
+    def run_saved_flash(self, output):
+        port = self.selected_port()
+        if port is None:
+            return
         self.work("Verifying saved build.", lambda: self.flash_output(port, output),
                   lambda mac: self.notify("Firmware flashed and launcher verified." if mac else "Flash cancelled."))
 
@@ -473,19 +519,20 @@ class Builder(wx.Frame):
 
         def perform():
             if catalog is not None:
-                wx.CallAfter(self.report, f"Checking the cached firmware source for {catalog['tag']}.")
-            root = source_tree(catalog) if catalog is not None else ROOT
-            help_root = download_app_resources(catalog, selected, include_help) if catalog is not None else None
-            if help_root is not None:
-                wx.CallAfter(self.report, f"Selected-app help and setup files are available at {help_root}.")
-            build(root, selected, output, run=self.command, screen=screen, include_help=include_help,
-                  help_root=help_root)
+                bundle = build_release(catalog, selected, output, screen=screen, include_help=include_help,
+                                       run=self.command, report=lambda line: wx.CallAfter(self.report, line))
+            else:
+                build(ROOT, selected, output, run=self.command, screen=screen, include_help=include_help)
+                bundle = output
             if port is not None:
-                wx.CallAfter(self.report, f"USB recovery files: {output}")
-                return self.flash_output(port, output, allow_migration=action == "migrate", backup=backup)
-            return True
+                wx.CallAfter(self.report, f"USB recovery files: {bundle}")
+                return bundle, self.flash_output(port, bundle, allow_migration=action == "migrate", backup=backup)
+            return bundle, True
 
-        def done(result):
+        def done(completed):
+            output, result = completed
+            if output in self.build_records:
+                self.saved.SetSelection(self.build_records.index(output))
             if not result:
                 description = "Flash cancelled. The build is ready."
             else:
@@ -649,6 +696,7 @@ class Builder(wx.Frame):
 if __name__ == "__main__":
     application = wx.App()
     try:
+        trim_programs()
         window = Builder()
         window.Show()
         application.MainLoop()

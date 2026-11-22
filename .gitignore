@@ -4,6 +4,7 @@ __pycache__/
 /workspace/
 /archived/
 *.log
+* (SFConflict *)*
 /release-files/
 /research/arduino-audio-tools/
 /research/arduino-espeak-ng/

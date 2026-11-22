@@ -1,9 +1,12 @@
 # Flashing and recovery
 
 The [desktop builder](BUILDING.md) checks the connected chip and partition
-table, then shows USB recovery instructions before it writes. Use **Flash a
-saved build** with the saved `build.json` to reinstall a previous builder image.
-You can also use the manual procedure below.
+table, then shows USB recovery instructions before it writes. Select a saved
+image and choose **Flash selected build**. For a bundle stored elsewhere, use
+**Tools → Browse for a saved build** and open its `build.json`.
+The builder uses a 1200-baud USB touch to enter download mode from the running
+launcher. Press F5 to refresh USB ports after connecting the device. You can
+also use the manual procedure below.
 
 Use an **M5Stack Cardputer ADV with 8 MiB flash**, a data-capable USB cable, and Python. The release ZIP contains the bootloader, partition table, OTA initialization data, application, and their SHA-256 checksums. Extract it and run the commands from the extracted directory. Substitute your download port for `PORT` in each command.
 

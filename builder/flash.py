@@ -24,6 +24,20 @@ def ports():
     return [port for port in comports() if port.vid == 0x303A]
 
 
+def usb_serial(port):
+    return (port.serial_number or "").replace(":", "").casefold()
+
+
+def same_usb_device(first, second):
+    first_serial, second_serial = usb_serial(first), usb_serial(second)
+    if first_serial and second_serial:
+        # The launcher and ROM can use different IDs on the same USB device.
+        if first_serial == second_serial:
+            return True
+    first_bus = (first.location or "").partition(":")[0]
+    return bool(first_bus and first_bus == (second.location or "").partition(":")[0])
+
+
 def read_identity(port):
     with serial.Serial(port, 115200, timeout=0.25) as link:
         deadline = time.monotonic() + 3
@@ -56,32 +70,51 @@ def identify(port):
 
 
 def find_download_port(selected):
-    try:
-        return selected, identify(selected)
-    except RuntimeError:
-        pass
-    before = {port.device: port for port in comports()}
-    original = before.get(selected)
+    original = next((port for port in ports() if port.device == selected), None)
     if original is None:
-        raise ValueError("Selected USB device disappeared")
+        raise ValueError("Selected USB device disappeared. Refresh USB ports and try again.")
+    # The launcher and ROM use different interfaces on Windows. Probe the
+    # launcher before esptool, whose serial connection can disturb the handoff.
+    serial_id = usb_serial(original)
+    rom_port = usb_interface(original) == "0"
+    if rom_port or ":" in (original.serial_number or ""):
+        try:
+            mac = identify(selected)
+        except RuntimeError:
+            pass
+        else:
+            if re.fullmatch(r"[a-f0-9]{12}", serial_id) and mac.replace(":", "") != serial_id:
+                raise ValueError("Download mode MAC differs from the selected device.")
+            return selected, mac
     try:
         with serial.Serial(selected, 1200, timeout=0.25):
             time.sleep(0.25)
     except OSError:
         pass  # The application port may disconnect during the 1200-baud touch.
-    deadline = time.monotonic() + 12
+    deadline = time.monotonic() + 15
+    time.sleep(0.3)
     while time.monotonic() < deadline:
         for port in ports():
-            same_location = original.location and original.location == port.location
-            same_serial = original.serial_number and original.serial_number == port.serial_number
-            if port.device != selected and not same_location and not same_serial:
+            if not same_usb_device(original, port) and not (
+                    port.device == selected and not serial_id and not usb_serial(port)):
+                continue
+            if usb_interface(original) == "1" and port.location == original.location and (
+                    time.monotonic() < deadline - 5):
                 continue
             try:
-                return port.device, identify(port.device)
+                mac = identify(port.device)
             except RuntimeError:
                 continue
+            candidate_id = usb_serial(port)
+            if re.fullmatch(r"[a-f0-9]{12}", candidate_id) and mac.replace(":", "") != candidate_id:
+                raise ValueError("Download mode MAC differs from the selected device.")
+            return port.device, mac
         time.sleep(0.3)
     raise ValueError("Download port could not be matched. Enter download mode with G0 and select its port.")
+
+
+def usb_interface(port):
+    return (port.location or "").partition(":")[2].rpartition(".")[2]
 
 
 def check_layout(table):
@@ -110,8 +143,7 @@ def check_layout(table):
         raise ValueError("Partition table checksum or padding is invalid")
 
 
-def flash(selected, directory, *, allow_migration=False, backup=None, report=print, confirm=None,
-          recommend_migration=None):
+def verify_build(directory):
     manifest = json.loads((directory / "build.json").read_text(encoding="utf-8"))
     for name in MIGRATION_FILES.values():
         if digest(directory / name) != manifest["sha256"][name]:
@@ -125,6 +157,13 @@ def flash(selected, directory, *, allow_migration=False, backup=None, report=pri
         raise ValueError("Bootloader exceeds its flash region")
     if (directory / "boot_app0.bin").stat().st_size != APP_ADDRESS - 0xE000:
         raise ValueError("Boot selection data has an unexpected size")
+    return manifest
+
+
+def flash(selected, directory, *, allow_migration=False, backup=None, report=print, confirm=None,
+          recommend_migration=None):
+    manifest = verify_build(directory)
+    app = directory / "firmware.bin"
     report("Entering USB download mode.")
     port, mac = find_download_port(selected)
     download = next((item for item in comports() if item.device == port), None)
@@ -170,15 +209,14 @@ def flash(selected, directory, *, allow_migration=False, backup=None, report=pri
     esptool(port, "flash-id", after="watchdog-reset")
     report("Waiting for the launcher to report its version.")
     expected = {key: manifest[key] for key in ("launcher", "modules")}
-    if "screen" in manifest:
-        expected["screen"] = manifest["screen"]
+    expected.update({key: manifest[key] for key in ("screen", "include_help") if key in manifest})
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
         for candidate in ports():
-            if candidate.device not in {port, selected} and not (
-                download and ((download.location and candidate.location == download.location)
-                              or (download.serial_number and candidate.serial_number == download.serial_number))
-            ):
+            if download and not same_usb_device(download, candidate):
+                if usb_serial(download) or candidate.device not in {port, selected}:
+                    continue
+            elif download is None and candidate.device not in {port, selected}:
                 continue
             try:
                 if read_identity(candidate.device) == expected:

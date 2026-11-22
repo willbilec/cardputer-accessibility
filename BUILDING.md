@@ -4,10 +4,13 @@
 
 On 64-bit Windows, extract the entire release ZIP to a writable folder and
 open **Cardputer ADV Firmware Builder.exe**. The ZIP includes Python and the
-builder dependencies. Install Git for firmware builds. The first build
-downloads its pinned source dependencies and toolchain. The GitHub release ZIP
-opens the GitHub catalog automatically. It downloads the build sources when
-you first build. To package a local preview, add `--with-source`.
+builder dependencies. The GitHub release ZIP opens the GitHub catalog
+automatically. The default app selection and **Select all current apps** are
+available as precompiled firmware with either LCD setting and the help-text
+option off. The builder checks the archive and saves a flashable build.
+Custom app selections and the help-text option use Git and the pinned
+compiler, source and ESP32-S3 SDK. To package a local preview, add
+`--with-source`.
 
 To regenerate the Windows ZIP, run
 `python builder/package_windows.py release-files/Cardputer-ADV-Builder-Windows-x64`
@@ -26,32 +29,34 @@ python builder/bootstrap.py
 Use Tab to reach the app list, the arrow keys to move, and Space to toggle
 the focused app. Each row shows the name, inclusion status, description and
 version. Voice Recorder and the Bluetooth/USB keyboard can each be omitted.
-The Tools menu contains catalog refresh, USB refresh, builder and firmware
-updates, partition installation, saved-build recovery and SD updates. The
+Use **Refresh USB ports** or F5 after connecting a Cardputer. Select an image
+in **Saved firmware builds** and choose **Flash selected build** to reinstall
+it. **Tools → Browse for a saved build** accepts a `build.json` from another
+folder. The Tools menu also contains catalog refresh, builder and firmware
+updates, partition installation and SD updates. The
 app list selects all available apps by default. Keyboard learning is an
 optional item in the expandable **Help options** group; it appears in the
 firmware Help menu when selected. The group can also package help text for
 selected apps. Clear the app check boxes and Help options to omit both.
-The first build downloads pinned audio sources.
 Check **Include LCD display** to build the visual interface and backlight
 settings. The check box is off by default. Screen-off builds omit the display
 driver, menus, icons, and fonts. For command-line builds, pass `--screen`.
-When the Bluetooth/USB keyboard module is selected, its source downloads in
+For custom builds with the Bluetooth/USB keyboard selected, its source downloads in
 parallel with the audio sources. PlatformIO
 then installs its toolchain and any libraries for the selected apps. When help
-text is selected, the builder downloads the common help text and documentation
+text is selected under **Help options**, the builder downloads the common help text and documentation
 for selected apps only, writes it to `sdcard/Help` in the output folder, and
-offers to copy it to a mounted microSD card. Selecting Bible Reader also
-downloads its setup guide and Old Testament sorting scripts into the builder's
-`workspace/help/<release>` folder. These files are separate release assets;
-they are not part of the builder program or firmware source archive.
+offers to copy it to a mounted microSD card. With this option on, Bible Reader
+also downloads its setup guide and Old Testament sorting scripts into
+`workspace/help/current`.
 The status bar shows the current download percentage. The activity log keeps
 completed transfers and build phases. The builder
 chooses a job count from available logical CPUs and free RAM. The program's
 `workspace` folder holds downloaded sources, packages, the toolchain, and
-finished firmware builds. Compatible selections reuse compiler objects
-while saving each completed image separately. Keep the workspace when
-updating the program.
+finished firmware builds. Repeating the same release selection reuses the
+verified saved image. Custom builds use incremental compiler objects. After
+successful updates the builder clears obsolete release caches and temporary
+toolchain downloads. Keep the workspace when updating the program.
 
 The builder silently checks for program updates from GitHub. It downloads the
 individual Builder Python files, verifies every SHA-256 checksum, then switches
