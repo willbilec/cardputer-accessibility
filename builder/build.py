@@ -70,6 +70,7 @@ def trim_saved_builds(current):
 
 
 def trim_compiler_objects(project, limit=512 * 1024**2):
+    project = project.resolve()
     active = object_directory(project)
     for folder in active.parent.glob("*"):
         if folder != active and re.fullmatch(r"[0-9a-f]{16}", folder.name) and folder.resolve() == folder:

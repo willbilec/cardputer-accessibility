@@ -424,7 +424,8 @@ class BuilderTests(unittest.TestCase):
         old.write_bytes(b"old")
         recent.write_bytes(b"recent")
         import os
-        os.utime(old, (1, 1))
+        previous = recent.stat().st_mtime - 3600
+        os.utime(old, (previous, previous))
         trim_compiler_objects(self.root, limit=6)
         self.assertFalse(old.exists())
         self.assertTrue(recent.exists())
