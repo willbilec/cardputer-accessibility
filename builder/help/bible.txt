@@ -3,7 +3,8 @@ Bible reader
 The Bible app needs audio files on the SD card. Place each translation in its
 own folder under /bible. For example, use /bible/NLT Bible/01 - Genesis/ and
 put files named Faith Comes By Hearing - Genesis 1.mp3, Genesis 2.mp3, and so
-on in that book folder. When Bible Reader is selected in the Builder, its setup
-guide and sorting scripts download to the Builder workspace's help folder.
+on in that book folder. In the Builder, select Bible Reader and enable the
+help text and setup files option. The guide and sorting scripts download to
+workspace/help/current.
 Choose Bible, then a version, book, and chapter. Space plays or pauses.
 Option+H reads controls.

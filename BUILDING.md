@@ -5,21 +5,24 @@
 On 64-bit Windows, extract the entire release ZIP to a writable folder and
 open **Cardputer ADV Firmware Builder.exe**. The ZIP includes Python and the
 builder dependencies. The GitHub release ZIP opens the GitHub catalog
-automatically. The default app selection is available as precompiled
+automatically. The default app checkboxes match the precompiled
 universal firmware with the LCD and help-text options off. The builder
 checks the archive and saves a flashable build. Other selections use Git
-and the pinned compiler, source and ESP32-S3 SDK. To package a local preview, add
-`--with-source`.
+and the pinned compiler, source and ESP32-S3 SDK. Use the checkout or source
+archive when testing changes to local help and setup resources.
 
 To regenerate the Windows ZIP, run
 `python builder/package_windows.py release-files/Cardputer-ADV-Builder-Windows-x64`
 from a 64-bit Windows virtual environment with the builder requirements installed.
+Add `--with-source` to package production firmware sources with a local preview.
 
 Use Python 3.12 or later and install Git. Create a Python virtual environment and
-install the builder dependencies. On Linux, use the source archive from the
-release. wxPython also needs GTK. Use your
+install the builder dependencies. On Linux, extract the source archive from
+the release or clone the repository. wxPython also needs GTK. Use your
 distribution's wxPython package with a system-site-packages virtual environment
-if a wxPython wheel is unavailable for your distribution.
+if a wxPython wheel is unavailable for your distribution. In the builder,
+choose **GitHub release** to use the published firmware and **Local source**
+to build the checkout.
 
 ```sh
 python -m pip install -r builder/requirements.txt
@@ -33,10 +36,10 @@ Use **Refresh USB ports** or F5 after connecting a Cardputer. Select an image
 in **Saved firmware builds** and choose **Flash selected build** to reinstall
 it. **Tools → Browse for a saved build** accepts a `build.json` from another
 folder. The Tools menu also contains catalog refresh, builder and firmware
-updates, partition installation and SD updates. The
-app list selects all available apps by default. Keyboard learning is an
-optional item in the expandable **Help options** group; it appears in the
-firmware Help menu when selected. The group can also package help text for
+updates, partition installation and SD updates. The default selection
+includes every native app except Keyboard learning. That module can be
+selected under **Help options** and appears in the firmware Help menu.
+The group can also package help text for
 selected apps. Clear the app check boxes and Help options to omit both.
 Check **Include LCD display** to build the visual interface and backlight
 settings. The check box is off by default. Screen-off builds omit the display
@@ -58,12 +61,13 @@ verified saved image. Custom builds use incremental compiler objects. After
 successful updates the builder clears obsolete release caches and temporary
 toolchain downloads. Keep the workspace when updating the program.
 
-The builder silently checks for program updates from GitHub. It downloads the
-individual Builder Python files, verifies every SHA-256 checksum, then switches
-to the update only after all files pass. Help and setup resources are separate
-checksummed files downloaded only for selected apps. Updates take effect the next
-time you open the builder. A runtime compatibility change requires the Windows
-ZIP or updated Linux dependencies. You can check manually from the Tools menu.
+The builder checks for program updates on GitHub. It verifies the SHA-256
+checksum of each updated Python file and loads the new program the next time
+you open the builder. Use **Tools → Check for builder updates** to check
+manually. To move from Windows builder v0.2.8 or earlier to the compact release
+format, download the newer Windows ZIP once. Keep the existing `workspace`
+folder to carry forward saved firmware and caches. A runtime compatibility
+change also requires the Windows ZIP or updated Linux dependencies.
 When a single Cardputer is connected at startup, the builder also checks
 its reported firmware and app versions against GitHub and summarizes
 available updates and newly published apps.
@@ -95,30 +99,90 @@ layout to validate the one-time migration separately.
 
 ### Adding modules and releasing
 
-To submit an app, add its source and an entry in `builder/modules.json` in a
-pull request. A native entry lists its source files, flags, libraries and
-version. For a new Home app, provide an `entry` symbol declared as
-`extern const launcher::App` and defined with external linkage. The
-[launcher interface](research/offline-reader/include/launcher_app.h) provides
-entry, key, tick and close callbacks. Use its shared speech and Home services
-and document the keyboard operation as described in the
-[accessible app guide](ACCESSIBLE_APP_GUIDE.md). Global shortcuts are dispatched
-before app key-down events. Supply both open and key callbacks. Return false
-from open to return to Home after cleanup. Tick and close are optional.
+#### Register a native app
 
-Add a short `builder/help/<name>.txt` file and set the module's `help` field to
-make it available for optional on-card help. For apps that need user-provided
-files or another setup step, set `requires_setup: true`, `setup_guide` to a
-guide path, and `setup_assets` to any companion scripts. The release catalog
-publishes these as separate checksummed assets, and the builder downloads them
-only when that app is selected. Keep help and setup assets out of
-`PROGRAM_FILES`, Windows Builder packages, and the firmware source archive.
+Put implementation files in `research/offline-reader/src/` and headers in
+`research/offline-reader/include/`. Add an object under `modules` in
+[`builder/modules.json`](builder/modules.json). Use a stable lowercase ID
+with hyphens, a short name and description for the builder, and a three-part
+version. Set `introduced` to the launcher version that first offers the app
+so the builder can identify it as new. Keep that value on later updates.
 
-An SD entry lists a source data file and its name on the card. Increase the
-changed component's version when preparing a release. A release pins a
-compatible launcher and collection of apps together. After review, a
-`v<launcher-version>` tag runs the build matrix and publishes the checksummed
-source archive, SD packages and catalog as GitHub Release assets.
+```json
+{
+  "id": "counter",
+  "name": "Counter",
+  "description": "Count up or down and hear the current value.",
+  "version": "0.1.0",
+  "introduced": "0.3.0",
+  "kind": "native",
+  "sources": ["counter.cpp"],
+  "entry": "counterApp",
+  "help": "counter.txt"
+}
+```
+
+List source basenames in `sources`. Add `flags`, pinned `libraries`,
+`scripts`, or shared component IDs in `requires` when the app needs them.
+For a Home app, define `entry` at global scope with external linkage, for
+example `extern const launcher::App counterApp = {open, key, tick, close};`.
+The builder declares the symbol and generates its Home registration. See the
+[launcher interface](research/offline-reader/include/launcher_app.h) for
+callback signatures. Supply open and key callbacks. Pass `nullptr` for
+unused tick or close callbacks. Return false from open after cleaning up a
+failed start. Global shortcuts run before app key-down events. Use the shared
+speech and Home services and follow the [accessible app guide](ACCESSIBLE_APP_GUIDE.md).
+Features that extend an existing screen can omit `entry`.
+
+For data installed separately to the card, use `kind: "sd"`. Set `source`
+to the repository-relative data file and `filename` to its basename on the
+card. See the `controls-guide` entry for an example.
+
+#### Write on-device help and setup instructions
+
+- Put a UTF-8 plain text file such as `counter.txt` in [`builder/help/`](builder/help/)
+  and set `help` to that basename. Use letters, digits, hyphens or underscores
+  before `.txt`. Start with the app's title, then explain how to open it, the
+  main keys, required files or connections, and how to exit. Spell out key
+  names and use short lines that read naturally aloud.
+- Keep **Option + H** in the shared shortcut handler. Announce essential
+  keys when a registered app opens. Update
+  [unified controls](research/offline-reader/UNIFIED_CONTROLS.md) when keys or
+  workflows change. The on-card text is an additional reference.
+- For apps with setup steps, set `requires_setup: true`. Put the guide and
+  scripts under `builder/help/`. Set `setup_guide` to its repository-relative
+  path and `setup_assets` to the script basenames. The Bible reader entry
+  shows this arrangement.
+- With the app and **Include help text and download setup files for selected
+  apps** selected, the release builder downloads the checksummed files from
+  the tagged source. It packages the on-device text into
+  `<build>/sdcard/Help/` and offers to copy it to `/Help/` on the card.
+  Setup guides and scripts are for the computer and stay in
+  `workspace/help/current/`. Keep these files with the source outside the
+  Windows runtime and program update file list.
+
+#### Verify and publish
+
+Build the app by ID and inspect `build.json` and `sdcard/Help/`.
+
+```sh
+python builder/build.py workspace/builds/counter counter --include-help
+```
+
+Build again with the app omitted to check that its Home
+entry and app-specific dependencies are absent. Also test it with the
+standard app selection. Use the keyboard and speech checks above and record
+which device checks still need a physical run.
+
+Increase the version of a changed app or SD package when preparing a
+release. Set the launcher version in `builder/modules.json` and tag that
+commit `v<launcher-version>`. The
+[release workflow](.github/workflows/builder.yml) runs the builder tests,
+packages the Windows builder, and builds one universal image with
+`--preset standard`. GitHub provides the source ZIP and TAR.GZ. The builder
+reads catalog and updater metadata from a hidden block in the release notes
+and fetches individual help, setup, and SD files from the tagged source.
+Preserve that block when editing published release notes.
 
 ### Shared firmware components
 
@@ -152,7 +216,8 @@ python builder/build.py workspace/builds/full --preset all
 
 Choose a new output folder for each build. The output includes the four
 matching flash binaries and `build.json` with versions and checksums.
-Use `--preset core` for the base launcher or specify individual app IDs,
+Use `--preset core` for the base launcher, `--preset standard` for the
+published universal selection, or specify individual app IDs,
 for example `python builder/build.py workspace/builds/online playpalace nvda-remote`.
 Add `--keyboard-learning` to include Keyboard learning in Help and `--include-help`
 to package help text for selected apps into `sdcard/Help`:

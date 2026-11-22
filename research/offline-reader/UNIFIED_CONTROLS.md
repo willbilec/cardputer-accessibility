@@ -75,9 +75,10 @@ Global controls:
 
 Home contains Voice recorder, File manager, Bluetooth and USB keyboard when
 selected, Settings, and Browse SD card over USB or Wi-Fi when included. The
-optional Help menu contains Keyboard learning and any selected app help files
-copied to the SD card's Help folder. Keyboard learning describes pressed keys
-without sending them to another computer. In Voice recorder, Enter starts
+optional Help menu appears when the build includes Keyboard learning or help
+text. Keyboard learning describes pressed keys without sending them to
+another computer. Help documents are read from the SD card's `/Help/`
+folder after you copy them there. In Voice recorder, Enter starts
 recording and Enter again saves it.
 Space pauses or resumes recording or preview playback. A high beep signals
 start or resume, and a low beep signals pause or the end of playback.

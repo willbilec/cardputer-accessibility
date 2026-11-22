@@ -54,6 +54,11 @@ default speech, repeat buffers and diagnostics. Keep ordinary remote typing sile
 
 For new selectable native apps, use the [launcher app interface](research/offline-reader/include/launcher_app.h)
 and [module registration instructions](BUILDING.md#adding-modules-and-releasing).
+Add the spoken shortcut help in the app, register its on-card text in
+`builder/modules.json`, and put the text and any desktop setup files in
+`builder/help/`. Update the [unified controls](research/offline-reader/UNIFIED_CONTROLS.md)
+when adding or changing a keyboard workflow.
+
 The steps below describe older apps that are integrated directly into the launcher.
 
 Open [src/unified.cpp](research/offline-reader/src/unified.cpp) in your editor.
